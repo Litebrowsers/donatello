@@ -15,23 +15,13 @@
         <div id="challenge1" class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
             <h2 class="text-2xl font-semibold mb-4">Challenge 1</h2>
             <canvas id="canvas1" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4"></canvas>
-            <div id="hashes1" class="text-sm">
-                <p>Red: <span id="red-hash1" class="font-mono"></span> (S: <span id="red-hash-server1" class="font-mono"></span>) <span id="red-match1"></span></p>
-                <p>Green: <span id="green-hash1" class="font-mono"></span> (S: <span id="green-hash-server1" class="font-mono"></span>) <span id="green-match1"></span></p>
-                <p>Blue: <span id="blue-hash1" class="font-mono"></span> (S: <span id="blue-hash-server1" class="font-mono"></span>) <span id="blue-match1"></span></p>
-                <p>Alpha: <span id="alpha-hash1" class="font-mono"></span> (S: <span id="alpha-hash-server1" class="font-mono"></span>) <span id="alpha-match1"></span></p>
-            </div>
+            <div id="total-hash1" class="text-sm font-mono"></div>
         </div>
 
         <div id="challenge2" class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
             <h2 class="text-2xl font-semibold mb-4">Challenge 2</h2>
             <canvas id="canvas2" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4"></canvas>
-            <div id="hashes2" class="text-sm">
-                <p>Red: <span id="red-hash2" class="font-mono"></span></p>
-                <p>Green: <span id="green-hash2" class="font-mono"></span></p>
-                <p>Blue: <span id="blue-hash2" class="font-mono"></span></p>
-                <p>Alpha: <span id="alpha-hash2" class="font-mono"></span></p>
-            </div>
+            <div id="total-hash2" class="text-sm font-mono"></div>
         </div>
 
     </div>
@@ -41,6 +31,7 @@
     </button>
 
     <p class="mt-4 text-sm text-gray-500">Time taken: <span id="time-taken">N/A</span></p>
+    <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
 
     <script>
         function drawRectangle(ctx, color, w, h, x, y) {
@@ -120,7 +111,7 @@
             });
         }
 
-        async function calculateAndDisplayHashes(canvas, serverHashes, ids) {
+        async function calculateCombinedHash(canvas) {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
@@ -146,22 +137,8 @@
             const clientBlueHash = await sha256(bChannel);
             const clientAlphaHash = await sha256(aChannel);
 
-            document.getElementById(ids.red).textContent = clientRedHash;
-            document.getElementById(ids.green).textContent = clientGreenHash;
-            document.getElementById(ids.blue).textContent = clientBlueHash;
-            document.getElementById(ids.alpha).textContent = clientAlphaHash;
-
-            if (Object.keys(serverHashes).length !== 0) {
-                document.getElementById(ids.redServer).textContent = serverHashes.red || 'N/A';
-                document.getElementById(ids.greenServer).textContent = serverHashes.green || 'N/A';
-                document.getElementById(ids.blueServer).textContent = serverHashes.blue || 'N/A';
-                document.getElementById(ids.alphaServer).textContent = serverHashes.alpha || 'N/A';
-
-                document.getElementById(ids.redMatch).textContent = serverHashes.red ? (clientRedHash === serverHashes.red ? '✅' : '❌') : '';
-                document.getElementById(ids.greenMatch).textContent = serverHashes.green ? (clientGreenHash === serverHashes.green ? '✅' : '❌') : '';
-                document.getElementById(ids.blueMatch).textContent = serverHashes.blue ? (clientBlueHash === serverHashes.blue ? '✅' : '❌') : '';
-                document.getElementById(ids.alphaMatch).textContent = serverHashes.alpha ? (clientAlphaHash === serverHashes.alpha ? '✅' : '❌') : '';
-            }
+            const combinedHash = await sha256(new TextEncoder().encode(clientRedHash + clientGreenHash + clientBlueHash + clientAlphaHash));
+            return combinedHash;
         }
 
         async function fetchAndDrawChallenge() {
@@ -182,19 +159,28 @@
                 drawTask(ctx1, data.first_task);
                 drawTask(ctx2, data.second_task);
 
-                const ids1 = {
-                    red: 'red-hash1', green: 'green-hash1', blue: 'blue-hash1', alpha: 'alpha-hash1',
-                    redServer: 'red-hash-server1', greenServer: 'green-hash-server1', blueServer: 'blue-hash-server1', alphaServer: 'alpha-hash-server1',
-                    redMatch: 'red-match1', greenMatch: 'green-match1', blueMatch: 'blue-match1', alphaMatch: 'alpha-match1'
-                };
-                await calculateAndDisplayHashes(canvas1, data.hashes, ids1);
+                const totalHash1 = await calculateCombinedHash(canvas1);
+                document.getElementById('total-hash1').textContent = totalHash1;
 
-                const ids2 = {
-                    red: 'red-hash2', green: 'green-hash2', blue: 'blue-hash2', alpha: 'alpha-hash2',
-                    redServer: 'red-hash-server2', greenServer: 'green-hash-server2', blueServer: 'blue-hash-server2', alphaServer: 'alpha-hash-server2',
-                    redMatch: 'red-match2', greenMatch: 'green-match2', blueMatch: 'blue-match2', alphaMatch: 'alpha-match2'
-                };
-                await calculateAndDisplayHashes(canvas2, {}, ids2);
+                const totalHash2 = await calculateCombinedHash(canvas2);
+                document.getElementById('total-hash2').textContent = totalHash2;
+
+                const answer_response = await fetch('/challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        id: data.id,
+                        totalHash1: totalHash1,
+                        totalHash2: totalHash2,
+                    }),
+                });
+
+                const answer_data = await answer_response.json();
+                if (answer_response.status === 200) {
+                    document.getElementById('noise-detected').textContent = answer_data.noise_detected;
+                }
 
             } catch (error) {
                 console.error('Error fetching or drawing challenge:', error);

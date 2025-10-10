@@ -134,6 +134,17 @@ func (c *Canvas) CalculateHashes() (map[string]string, error) {
 	return hashes, nil
 }
 
+func (c *Canvas) CalculateCombinedHash(results map[string]string) (string, error) {
+	order := []string{"red", "green", "blue", "alpha"}
+
+	combined := ""
+	for _, k := range order {
+		combined += results[k]
+	}
+
+	return calculateHash([]byte(combined))
+}
+
 func calculateHash(data []byte) (string, error) {
 	hasher := sha256.New()
 	_, err := hasher.Write(data)
