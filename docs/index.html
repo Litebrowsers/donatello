@@ -32,7 +32,6 @@
 
     <p class="mt-4 text-sm text-gray-500">Time taken: <span id="time-taken">N/A</span></p>
     <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
-    <p class="mt-4 text-sm text-gray-500">Fingerprint OK: <span id="fingerprint-ok">N/A</span></p>
 
     <script>
         // --- Backend Logic (translated from Go) ---
@@ -369,11 +368,8 @@
 
             // --- Verification ---
             const noiseDetected = expectedHash1 !== clientHash1;
-            const fingerprintOk = expectedCombinedHash2 === clientCombinedHash2;
 
             document.getElementById('noise-detected').textContent = noiseDetected;
-            document.getElementById('fingerprint-ok').textContent = fingerprintOk;
-
 
             const endTime = performance.now();
             const timeTaken = endTime - startTime;
