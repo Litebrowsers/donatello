@@ -14,14 +14,14 @@
 
         <div id="challenge1" class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
             <h2 class="text-2xl font-semibold mb-4">Challenge 1</h2>
-            <canvas id="canvas1" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4"></canvas>
-            <div id="total-hash1" class="text-sm font-mono"></div>
+            <canvas id="canvas1" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4" style="display: none;"></canvas>
+            <div id="first_hash" class="text-sm font-mono"></div>
         </div>
 
         <div id="challenge2" class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
             <h2 class="text-2xl font-semibold mb-4">Challenge 2</h2>
-            <canvas id="canvas2" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4"></canvas>
-            <div id="total-hash2" class="text-sm font-mono"></div>
+            <canvas id="canvas2" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4" style="display: none;"></canvas>
+            <div id="second_hash" class="text-sm font-mono"></div>
         </div>
 
     </div>
@@ -111,7 +111,7 @@
             });
         }
 
-        async function calculateCombinedHash(canvas) {
+        async function calculateCombinedHash(canvas, mode = "combined") {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
@@ -132,13 +132,64 @@
                 }
             }
 
-            const clientRedHash = await sha256(rChannel);
-            const clientGreenHash = await sha256(gChannel);
-            const clientBlueHash = await sha256(bChannel);
-            const clientAlphaHash = await sha256(aChannel);
+            const [rHash, gHash, bHash, aHash] = await Promise.all([
+                sha256(rChannel),
+                sha256(gChannel),
+                sha256(bChannel),
+                sha256(aChannel)
+            ]);
 
-            const combinedHash = await sha256(new TextEncoder().encode(clientRedHash + clientGreenHash + clientBlueHash + clientAlphaHash));
+            if (mode === "separate") {
+                return {
+                    r: rHash,
+                    g: gHash,
+                    b: bHash,
+                    a: aHash,
+                    a_pixels: aChannel
+                };
+            }
+
+            const combinedHash = await sha256(
+                new TextEncoder().encode(rHash + gHash + bHash + aHash)
+            );
             return combinedHash;
+        }
+
+        function findContourValuesWithPositions(arr, coreValue = 255) {
+            const n = Math.sqrt(arr.length);
+            if (!Number.isInteger(n)) throw new Error("Длина массива должна быть квадратом");
+
+            const matrix = [];
+            for (let i = 0; i < n; i++) matrix.push(arr.slice(i * n, (i + 1) * n));
+
+            const offsets = [
+                [-1, -1], [-1, 0], [-1, 1],
+                [0, -1], [0, 1],
+                [1, -1], [1, 0], [1, 1]
+            ];
+
+            const contourValues = [];
+
+            for (let y = 0; y < n; y++) {
+                for (let x = 0; x < n; x++) {
+                    if (matrix[y][x] === coreValue) {
+                        for (const [dy, dx] of offsets) {
+                            const ny = y + dy;
+                            const nx = x + dx;
+                            if (ny >= 0 && ny < n && nx >= 0 && nx < n) {
+                                const v = matrix[ny][nx];
+                                if (v > 0 && v < coreValue) {
+                                    contourValues.push({value: v, dy, dx, y: ny, x: nx});
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            console.log(contourValues);
+
+            return contourValues;
         }
 
         async function fetchAndDrawChallenge() {
@@ -159,11 +210,16 @@
                 drawTask(ctx1, data.first_task);
                 drawTask(ctx2, data.second_task);
 
+                console.log(data.second_task);
                 const totalHash1 = await calculateCombinedHash(canvas1);
-                document.getElementById('total-hash1').textContent = totalHash1;
+                document.getElementById('first_hash').textContent = totalHash1;
 
-                const totalHash2 = await calculateCombinedHash(canvas2);
-                document.getElementById('total-hash2').textContent = totalHash2;
+                const hashes = await calculateCombinedHash(canvas2, "separate");
+                document.getElementById('second_hash').textContent = hashes['a'];
+
+                const a_pixel =  hashes['a_pixels']
+
+                findContourValuesWithPositions(a_pixel);
 
                 const answer_response = await fetch('/challenge', {
                     method: 'POST',
@@ -173,7 +229,7 @@
                     body: JSON.stringify({
                         id: data.id,
                         totalHash1: totalHash1,
-                        totalHash2: totalHash2,
+                        totalHash2: hashes['a'],
                     }),
                 });
 

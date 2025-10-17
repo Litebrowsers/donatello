@@ -133,5 +133,12 @@ R:FF0000:5:3:10:5;C:00FF00:4:15:15;T:0000FF:2:2:6:2:4:6
 
 ```
 
-For subpixel tasks, we will use a similar approach but generate different lines and less stable figures. The exact format
-for this is still to be defined.
+## Storage
+The current implementation uses GORM for database interactions and an in-memory cache for temporary data storage.
+The system is designed to be extensible, allowing for the future addition of other storage backends such as Redis for 
+caching or PostgreSQL for the main database.
+
+In the current approach, a single test is generated and sent to the client as a task. This test consists of a set of 
+randomly generated shapes that the client must render. The client then calculates a hash of the rendered output and 
+sends it back to the server for verification. This method allows for a baseline analysis of the client's rendering 
+capabilities.

@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Litebrowsers/donatello/internal/cache"
+	"github.com/Litebrowsers/donatello/internal/db"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 )
@@ -44,6 +44,15 @@ func RateLimitMiddleware(limit rate.Limit, burst int) gin.HandlerFunc {
 }
 
 func main() {
+	err := db.InitDB()
+	if err != nil {
+		log.Fatalf("failed to connect database: %v", err)
+	}
+	err = db.DB.AutoMigrate(&models.Task{}, &models.Challenge{})
+	if err != nil {
+		log.Fatalf("failed to migrate database: %v", err)
+	}
+
 	router := gin.Default()
 
 	// Configure port
@@ -57,8 +66,6 @@ func main() {
 	if canvasSizeStr != "" {
 		canvasSize, _ = strconv.Atoi(canvasSizeStr)
 	}
-
-	memoryCache := cache.NewInMemoryCache()
 
 	// Apply Rate Limiter Middleware
 	router.Use(RateLimitMiddleware(rate.Every(time.Second/5), 10))
@@ -88,28 +95,56 @@ func main() {
 
 		firstTask := firstTaskGenerator.GenerateTask()
 
-		challenge := cache.Challenge{
-			Task:         firstTask,
-			ExpectedHash: combinedHash,
-			ExpiresAt:    time.Now().Add(1 * time.Minute),
+		var secondTask models.Task
+		result := db.DB.Where("name = ?", "secondTask").First(&secondTask)
+		if result.Error != nil {
+			numShapesSecondTask := rand.Intn(6) + 1
+			randomShapesSecondTask := canvas_tasks.GenerateRandomShapes(canvasSize, numShapesSecondTask)
+			secondTaskGenerator := canvas_tasks.NewTaskGenerator(randomShapesSecondTask...)
+			secondTask.Value = secondTaskGenerator.GenerateTask()
+			secondTask.Name = "secondTask"
+			db.DB.Create(&secondTask)
 		}
 
-		err = memoryCache.Set(id.String(), challenge)
+		secondTaskShapes, err := canvas_tasks.ParseTask(secondTask.Value)
 		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse second task"})
+			return
+		}
+
+		secondTaskCanvas := canvas_tasks.NewCanvas(canvasSize, canvasSize)
+		secondTaskCanvas.DrawShapes(secondTaskShapes)
+		secondTaskHashes, err := secondTaskCanvas.CalculateHashes()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate hashes for second task"})
+			return
+		}
+
+		secondTaskCombinedHash, err := secondTaskCanvas.CalculateCombinedHash(secondTaskHashes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate combined hash for second task"})
+			return
+		}
+
+		challenge := models.Challenge{
+			ID:            id.String(),
+			Task:          firstTask,
+			ExpectedHash:  combinedHash,
+			ExpiresAt:     time.Now().Add(1 * time.Minute),
+			NoiseDetected: false,
+			Fingerprint:   secondTaskCombinedHash,
+		}
+
+		result = db.DB.Create(&challenge)
+		if result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save task to cache"})
 			return
 		}
 
-		numShapesSecondTask := rand.Intn(6) + 1
-		randomShapesSecondTask := canvas_tasks.GenerateRandomShapes(canvasSize, numShapesSecondTask)
-		secondTaskGenerator := canvas_tasks.NewTaskGenerator(randomShapesSecondTask...)
-
-		secondTask := secondTaskGenerator.GenerateTask()
-
 		c.JSON(http.StatusOK, gin.H{
 			"id":          id.String(),
 			"first_task":  firstTask,
-			"second_task": secondTask,
+			"second_task": secondTask.Value,
 		})
 	})
 	router.POST("/challenge", func(c *gin.Context) {
@@ -126,21 +161,34 @@ func main() {
 		fmt.Printf("TotalHash1: %s\n", answer.FirstTaskHash)
 		fmt.Printf("TotalHash2: %s\n", answer.SecondTaskHash)
 
-		challenge, exists, err := memoryCache.Get(answer.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save task to cache"})
+		var challenge models.Challenge
+		result := db.DB.First(&challenge, "id = ?", answer.ID)
+		if result.Error != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Challenge not found"})
 			return
 		}
 
-		if !exists {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Challenge not found"})
+		noiseDetect := challenge.ExpectedHash != answer.FirstTaskHash
+		fingerprintOk := challenge.Fingerprint == answer.SecondTaskHash
+
+		challenge.NoiseDetected = noiseDetect
+
+		// Create a map for selective update
+		updateData := map[string]interface{}{
+			"NoiseDetected": noiseDetect,
+			"ActualHash":    answer.FirstTaskHash,
+			"Fingerprint":   answer.SecondTaskHash,
 		}
 
-		noiseDetect := challenge.ExpectedHash != answer.FirstTaskHash
+		if err := db.DB.Model(&challenge).Updates(updateData).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update challenge in cache"})
+			return
+		}
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":         "ok",
 			"noise_detected": noiseDetect,
+			"fingerprint_ok": fingerprintOk,
 		})
 	})
 
@@ -157,7 +205,7 @@ func main() {
 	})
 
 	log.Printf("Server starting on port %s", port)
-	err := router.Run(":" + port)
+	err = router.Run(":" + port)
 	if err != nil {
 		log.Printf("Server can't be started %s", err.Error())
 		return
