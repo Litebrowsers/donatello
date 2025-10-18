@@ -10,18 +10,23 @@
 
     <h1 class="text-4xl font-bold mb-8">Donatello Challenge Demo</h1>
 
+    <div class="text-center mb-8">
+        <p class="text-lg">This page demonstrates a client-side canvas rendering and hashing challenge.</p>
+        <a href="https://github.com/Litebrowsers/donatello" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">GitHub Repository</a>
+    </div>
+
     <div id="challenges" class="flex flex-wrap justify-center gap-8">
 
         <div id="challenge1" class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
             <h2 class="text-2xl font-semibold mb-4">Challenge 1</h2>
             <canvas id="canvas1" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4"></canvas>
-            <div id="first_hash" class="text-sm font-mono"></div>
+            <div id="first_hash" class="text-sm font-mono" style="display: none;"></div>
         </div>
 
         <div id="challenge2" class="bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
             <h2 class="text-2xl font-semibold mb-4">Challenge 2</h2>
             <canvas id="canvas2" width="20" height="20" class="border border-gray-300 bg-gray-50 mb-4"></canvas>
-            <div id="second_hash" class="text-sm font-mono"></div>
+            <div id="second_hash" class="text-sm font-mono" style="display: none;"></div>
         </div>
 
     </div>
@@ -32,6 +37,7 @@
 
     <p class="mt-4 text-sm text-gray-500">Time taken: <span id="time-taken">N/A</span></p>
     <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
+    <p class="mt-4 text-sm text-gray-500">Fingerprint: <span id="fingerprint">N/A</span></p>
 
     <script>
         // --- Backend Logic (translated from Go) ---
@@ -359,11 +365,12 @@
 
             // --- Client-side Hash Calculation ---
             const clientHash1 = await getClientCombinedHash(canvas1);
-            document.getElementById('first_hash').textContent = clientHash1;
+
 
             const clientHashes2 = await getClientCombinedHash(canvas2, "separate");
             const clientCombinedHash2 = await sha256(new TextEncoder().encode(clientHashes2.r + clientHashes2.g + clientHashes2.b + clientHashes2.a));
             document.getElementById('second_hash').textContent = clientHashes2.a;
+            document.getElementById('fingerprint').textContent = clientHashes2.a;
 
 
             // --- Verification ---
@@ -379,5 +386,10 @@
         // Run a challenge when the page loads
         runChallenge();
     </script>
+
+    <div class="text-center mt-8">
+        <p class="text-lg">Challenge 1 is for noise detection.</p>
+        <p class="text-lg">Challenge 2 is for calculating the real fingerprint.</p>
+    </div>
 </body>
 </html>
