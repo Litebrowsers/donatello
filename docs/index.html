@@ -75,38 +75,6 @@
             return primitives.join(';');
         }
 
-        function generateRandomShapes(canvasSize, count) {
-            const shapes = [];
-            for (let i = 0; i < count; i++) {
-                let newShape;
-                const shapeType = Math.floor(Math.random() * 5);
-                switch (shapeType) {
-                    case 0: // Rectangle
-                        const w = Math.floor(Math.random() * (canvasSize / 2)) + 1;
-                        const h = Math.floor(Math.random() * (canvasSize / 2)) + 1;
-                        newShape = `R:${generateRandomColor()}:${w}:${h}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}`;
-                        break;
-                    case 1: // Circle
-                        const r = Math.floor(Math.random() * (canvasSize / 4)) + 1;
-                        newShape = `C:${generateRandomColor()}:${r}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}`;
-                        break;
-                    case 2: // Triangle
-                        newShape = `T:${generateRandomColor()}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}`;
-                        break;
-                    case 3: // Line
-                        newShape = `L:${generateRandomColor()}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * 2) + 1}`;
-                        break;
-                    case 4: // Ellipse
-                        const rx = Math.floor(Math.random() * (canvasSize / 2)) + 1;
-                        const ry = Math.floor(Math.random() * (canvasSize / 2)) + 1;
-                        newShape = `E:${generateRandomColor()}:${rx}:${ry}:${Math.floor(Math.random() * canvasSize)}:${Math.floor(Math.random() * canvasSize)}`;
-                        break;
-                }
-                shapes.push(newShape);
-            }
-            return shapes.join(';');
-        }
-
         class ServerCanvas {
             constructor(width, height) {
                 this.width = width;
@@ -376,13 +344,10 @@
             // --- Server-side Hash Calculation ---
             const serverCanvas1 = new ServerCanvas(CANVAS_SIZE, CANVAS_SIZE);
             serverCanvas1.drawShapes(firstTask);
-            const { combinedHash: expectedHash1, hashes: expectedHashes1, channels: expectedChannels1 } = await serverCanvas1.calculateCombinedHash();
+            const { combinedHash: expectedHash1,  channels: expectedChannels1 } = await serverCanvas1.calculateCombinedHash();
 
             const serverCanvas2 = new ServerCanvas(CANVAS_SIZE, CANVAS_SIZE);
             serverCanvas2.drawShapes(secondTask);
-            const expectedHashes2 = await serverCanvas2.calculateHashes();
-            const expectedCombinedHash2 = await sha256(new TextEncoder().encode(expectedHashes2.r + expectedHashes2.g + expectedHashes2.b + expectedHashes2.a));
-
 
             // --- Client-side Drawing ---
             const canvas1 = document.getElementById('canvas1');
@@ -397,11 +362,10 @@
             drawTask(ctx2, secondTask);
 
             // --- Client-side Hash Calculation ---
-            const { combinedHash: clientHash1, hashes: clientHashes1, channels: clientChannels1 } = await getClientCombinedHash(canvas1);
+            const { combinedHash: clientHash1, channels: clientChannels1 } = await getClientCombinedHash(canvas1);
 
 
-            const { hashes: clientHashes2, channels: clientChannels2 } = await getClientCombinedHash(canvas2, "separate");
-            const clientCombinedHash2 = await sha256(new TextEncoder().encode(clientHashes2.r + clientHashes2.g + clientHashes2.b + clientHashes2.a));
+            const { hashes: clientHashes2 } = await getClientCombinedHash(canvas2, "separate");
             document.getElementById('second_hash').textContent = clientHashes2.a;
             document.getElementById('fingerprint').textContent = clientHashes2.a;
 
