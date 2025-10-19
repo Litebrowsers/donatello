@@ -38,6 +38,7 @@
     <p class="mt-4 text-sm text-gray-500">Time taken: <span id="time-taken">N/A</span></p>
     <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
     <p class="mt-4 text-sm text-gray-500">Fingerprint: <span id="fingerprint">N/A</span></p>
+    <p class="mt-4 text-sm text-gray-500">Noise Fingerprint: <span id="noise-fingerprint">N/A</span></p>
 
     <script>
         // --- Backend Logic (translated from Go) ---
@@ -204,7 +205,8 @@
             async calculateCombinedHash() {
                 const hashes = await this.calculateHashes();
                 const combined = hashes.r + hashes.g + hashes.b + hashes.a;
-                return await sha256(new TextEncoder().encode(combined));
+                const combinedHash = await sha256(new TextEncoder().encode(combined));
+                return { combinedHash, hashes, channels: { r: this.r, g: this.g, b: this.b, a: this.a } };
             }
         }
 
@@ -309,6 +311,13 @@
                 }
             }
 
+            const channels = {
+                r: rChannel,
+                g: gChannel,
+                b: bChannel,
+                a: aChannel,
+            };
+
             const [rHash, gHash, bHash, aHash] = await Promise.all([
                 sha256(rChannel),
                 sha256(gChannel),
@@ -316,22 +325,46 @@
                 sha256(aChannel)
             ]);
 
+            const hashes = {
+                r: rHash,
+                g: gHash,
+                b: bHash,
+                a: aHash,
+            };
+
             if (mode === "separate") {
-                return {
-                    r: rHash,
-                    g: gHash,
-                    b: bHash,
-                    a: aHash,
-                };
+                return { hashes, channels };
             }
 
             const combinedHash = await sha256(
                 new TextEncoder().encode(rHash + gHash + bHash + aHash)
             );
-            return combinedHash;
+            return { combinedHash, hashes, channels };
         }
 
         const STATIC_SECOND_TASK = 'R:FF0000:10:10:5:5;C:00FF00:5:15:15';
+
+        async function calculateNoiseFingerprint(expected, client) {
+            const diffR = new Uint8Array(expected.r.length);
+            const diffG = new Uint8Array(expected.g.length);
+            const diffB = new Uint8Array(expected.b.length);
+            const diffA = new Uint8Array(expected.a.length);
+
+            for (let i = 0; i < expected.r.length; i++) {
+                diffR[i] = Math.abs(expected.r[i] - client.r[i]);
+                diffG[i] = Math.abs(expected.g[i] - client.g[i]);
+                diffB[i] = Math.abs(expected.b[i] - client.b[i]);
+                diffA[i] = Math.abs(expected.a[i] - client.a[i]);
+            }
+
+            const combinedDiff = new Uint8Array(diffR.length + diffG.length + diffB.length + diffA.length);
+            combinedDiff.set(diffR, 0);
+            combinedDiff.set(diffG, diffR.length);
+            combinedDiff.set(diffB, diffR.length + diffG.length);
+            combinedDiff.set(diffA, diffR.length + diffG.length + diffB.length);
+
+            return await sha256(combinedDiff);
+        }
 
         async function runChallenge() {
             const startTime = performance.now();
@@ -343,7 +376,7 @@
             // --- Server-side Hash Calculation ---
             const serverCanvas1 = new ServerCanvas(CANVAS_SIZE, CANVAS_SIZE);
             serverCanvas1.drawShapes(firstTask);
-            const expectedHash1 = await serverCanvas1.calculateCombinedHash();
+            const { combinedHash: expectedHash1, hashes: expectedHashes1, channels: expectedChannels1 } = await serverCanvas1.calculateCombinedHash();
 
             const serverCanvas2 = new ServerCanvas(CANVAS_SIZE, CANVAS_SIZE);
             serverCanvas2.drawShapes(secondTask);
@@ -364,10 +397,10 @@
             drawTask(ctx2, secondTask);
 
             // --- Client-side Hash Calculation ---
-            const clientHash1 = await getClientCombinedHash(canvas1);
+            const { combinedHash: clientHash1, hashes: clientHashes1, channels: clientChannels1 } = await getClientCombinedHash(canvas1);
 
 
-            const clientHashes2 = await getClientCombinedHash(canvas2, "separate");
+            const { hashes: clientHashes2, channels: clientChannels2 } = await getClientCombinedHash(canvas2, "separate");
             const clientCombinedHash2 = await sha256(new TextEncoder().encode(clientHashes2.r + clientHashes2.g + clientHashes2.b + clientHashes2.a));
             document.getElementById('second_hash').textContent = clientHashes2.a;
             document.getElementById('fingerprint').textContent = clientHashes2.a;
@@ -377,6 +410,13 @@
             const noiseDetected = expectedHash1 !== clientHash1;
 
             document.getElementById('noise-detected').textContent = noiseDetected;
+
+            if (noiseDetected) {
+                const noiseFingerprint = await calculateNoiseFingerprint(expectedChannels1, clientChannels1);
+                document.getElementById('noise-fingerprint').textContent = noiseFingerprint;
+            } else {
+                document.getElementById('noise-fingerprint').textContent = 'n/a';
+            }
 
             const endTime = performance.now();
             const timeTaken = endTime - startTime;
