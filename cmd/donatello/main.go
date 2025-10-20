@@ -197,7 +197,7 @@ func main() {
 	router.GET("/", func(c *gin.Context) {
 		root, err := os.Getwd()
 		if err != nil {
-			c.String(500, "Failed to get working directory")
+			c.String(http.StatusInternalServerError, "Failed to get working directory")
 			return
 		}
 
@@ -206,6 +206,18 @@ func main() {
 		c.File(filePath)
 	})
 
+	router.GET("/predictor.worker.js", func(c *gin.Context) {
+		root, err := os.Getwd()
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to get working directory")
+			return
+		}
+
+		filePath := filepath.Join(root, "resources", "predictor.worker.js")
+
+		c.Header("Content-Type", "application/javascript")
+		c.File(filePath)
+	})
 	log.Printf("Server starting on port %s", port)
 	err = router.Run(":" + port)
 	if err != nil {

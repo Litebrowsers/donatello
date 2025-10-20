@@ -34,108 +34,7 @@
     <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
 
     <script>
-        class CanvasPredictor {
-            constructor(width, height) {
-                this.width = width;
-                this.height = height;
-                this.r = new Uint8Array(width * height).fill(0);
-                this.g = new Uint8Array(width * height).fill(0);
-                this.b = new Uint8Array(width * height).fill(0);
-                this.a = new Uint8Array(width * height).fill(0);
-            }
 
-            hexToRGBA(hex) {
-                const r = parseInt(hex.substring(0, 2), 16);
-                const g = parseInt(hex.substring(2, 4), 16);
-                const b = parseInt(hex.substring(4, 6), 16);
-                return { r, g, b, a: 255 };
-            }
-
-            drawRectangle(r) {
-                const col = this.hexToRGBA(r.color);
-                for (let y = r.y; y < r.y + r.h; y++) {
-                    for (let x = r.x; x < r.x + r.w; x++) {
-                        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-                            const i = y * this.width + x;
-                            this.r[i] = col.r;
-                            this.g[i] = col.g;
-                            this.b[i] = col.b;
-                            this.a[i] = col.a;
-                        }
-                    }
-                }
-            }
-
-            drawLine(l) {
-                const col = this.hexToRGBA(l.color);
-                const half = Math.floor(l.thickness / 2);
-
-                if (l.x1 === l.x2) { // Vertical
-                    const y1 = Math.min(l.y1, l.y2);
-                    const y2 = Math.max(l.y1, l.y2);
-                    for (let y = y1; y < y2; y++) {
-                        for (let x = l.x1 - half; x < l.x1 + half; x++) {
-                            if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-                                const i = y * this.width + x;
-                                this.r[i] = col.r;
-                                this.g[i] = col.g;
-                                this.b[i] = col.b;
-                                this.a[i] = col.a;
-                            }
-                        }
-                    }
-                } else if (l.y1 === l.y2) { // Horizontal
-                    const x1 = Math.min(l.x1, l.x2);
-                    const x2 = Math.max(l.x1, l.x2);
-                    for (let y = l.y1 - half; y < l.y1 + half; y++) {
-                        for (let x = x1; x < x2; x++) {
-                            if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
-                                const i = y * this.width + x;
-                                this.r[i] = col.r;
-                                this.g[i] = col.g;
-                                this.b[i] = col.b;
-                                this.a[i] = col.a;
-                            }
-                        }
-                    }
-                }
-            }
-
-            drawShapes(taskString) {
-                const shapes = taskString.split(';');
-                shapes.forEach(shapeStr => {
-                    if (!shapeStr) return;
-                    const parts = shapeStr.split(':');
-                    const type = parts[0];
-                    const color = parts[1];
-                    switch (type) {
-                        case 'R':
-                            this.drawRectangle({ color, w: parseInt(parts[2]), h: parseInt(parts[3]), x: parseInt(parts[4]), y: parseInt(parts[5]) });
-                            break;
-                        case 'L':
-                            this.drawLine({ color, x1: parseInt(parts[2]), y1: parseInt(parts[3]), x2: parseInt(parts[4]), y2: parseInt(parts[5]), thickness: parseInt(parts[6]) });
-                            break;
-                    }
-                });
-            }
-
-            async calculateHashes() {
-                const [rHash, gHash, bHash, aHash] = await Promise.all([
-                    sha256(this.r),
-                    sha256(this.g),
-                    sha256(this.b),
-                    sha256(this.a)
-                ]);
-                return { r: rHash, g: gHash, b: bHash, a: aHash };
-            }
-
-            async calculateCombinedHash() {
-                const hashes = await this.calculateHashes();
-                const combined = hashes.r + hashes.g + hashes.b + hashes.a;
-                const combinedHash = await sha256(new TextEncoder().encode(combined));
-                return { combinedHash, hashes, channels: { r: this.r, g: this.g, b: this.b, a: this.a } };
-            }
-        }
 
         async function calculateNoiseFingerprint(expected, client) {
             const diffR = new Uint8Array(expected.r.length);
@@ -299,49 +198,71 @@
                 drawTask(ctx1, data.first_task);
                 drawTask(ctx2, data.second_task);
 
-                const serverCanvas1 = new CanvasPredictor(canvas1.width, canvas1.height);
-                serverCanvas1.drawShapes(data.first_task);
-                const { combinedHash: expectedHash1,  channels: expectedChannels1 } = await serverCanvas1.calculateCombinedHash();
-
-                const { hashes: hashesCanvas1, channels: channelsCanvas1 } = await getCombinedHash(canvas1);
-                document.getElementById('first_hash').textContent = hashesCanvas1.a;
-
-                const { hashes: hashesCanvas2, channels: channelsCanvas2 } = await getCombinedHash(canvas2);
-                document.getElementById('second_hash').textContent = hashesCanvas2.a;
-
-                const totalHash1 = await sha256(
-                    new TextEncoder().encode(hashesCanvas1["r"] + hashesCanvas1["g"] + hashesCanvas1["b"] + hashesCanvas1["a"])
-                );
-
-                const result = {
-                    id: data.id,
-                    totalHash1: totalHash1,
-                    totalHash2: hashesCanvas2['a'],
-                }
-
-                if (hashesCanvas1 !== expectedHash1) {
-                    result.diffHash = await calculateNoiseFingerprint(expectedChannels1, channelsCanvas1);
-                }
-
-                const answer_response = await fetch('/challenge', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(result),
+                const worker = new Worker('predictor.worker.js');
+                worker.postMessage({
+                    taskString: data.first_task,
+                    width: canvas1.width,
+                    height: canvas1.height
                 });
 
-                const answer_data = await answer_response.json();
-                if (answer_response.status === 200) {
-                    document.getElementById('noise-detected').textContent = answer_data.noise_detected;
-                }
+                const handleWorkerMessage = async (e) => {
+                    const { combinedHash: expectedHash1, channels: expectedChannels1 } = e.data;
+
+                    const { hashes: hashesCanvas1, channels: channelsCanvas1 } = await getCombinedHash(canvas1);
+                    document.getElementById('first_hash').textContent = hashesCanvas1.a;
+
+                    const { hashes: hashesCanvas2, channels: channelsCanvas2 } = await getCombinedHash(canvas2);
+                    document.getElementById('second_hash').textContent = hashesCanvas2.a;
+
+                    const totalHash1 = await sha256(
+                        new TextEncoder().encode(hashesCanvas1["r"] + hashesCanvas1["g"] + hashesCanvas1["b"] + hashesCanvas1["a"])
+                    );
+
+                    const result = {
+                        id: data.id,
+                        totalHash1: totalHash1,
+                        totalHash2: hashesCanvas2['a'],
+                    };
+
+                    if (totalHash1 !== expectedHash1) {
+                        result.diffHash = await calculateNoiseFingerprint(expectedChannels1, channelsCanvas1);
+                    }
+
+                    const answer_response = await fetch('/challenge', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(result),
+                    });
+
+                    const answer_data = await answer_response.json();
+                    if (answer_response.status === 200) {
+                        document.getElementById('noise-detected').textContent = answer_data.noise_detected;
+                    }
+
+                    worker.terminate();
+                    const endTime = performance.now();
+                    const timeTaken = endTime - startTime;
+                    document.getElementById('time-taken').textContent = `${timeTaken.toFixed(2)} ms`;
+                };
+
+                const handleWorkerError = (e) => {
+                    console.error('Error from worker:', e);
+                    worker.terminate();
+                    const endTime = performance.now();
+                    const timeTaken = endTime - startTime;
+                    document.getElementById('time-taken').textContent = `Error after ${timeTaken.toFixed(2)} ms`;
+                };
+
+                worker.onmessage = handleWorkerMessage;
+                worker.onerror = handleWorkerError;
 
             } catch (error) {
                 console.error('Error fetching or drawing challenge:', error);
-            } finally {
                 const endTime = performance.now();
                 const timeTaken = endTime - startTime;
-                document.getElementById('time-taken').textContent = `${timeTaken.toFixed(2)} ms`;
+                document.getElementById('time-taken').textContent = `Error after ${timeTaken.toFixed(2)} ms`;
             }
         }
 
