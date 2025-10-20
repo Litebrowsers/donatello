@@ -15,4 +15,5 @@ type Challenge struct {
 	ExpiresAt     time.Time
 	NoiseDetected bool
 	Fingerprint   string
+	NoiseHash     *string
 }

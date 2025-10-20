@@ -34,6 +34,131 @@
     <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
 
     <script>
+        class CanvasPredictor {
+            constructor(width, height) {
+                this.width = width;
+                this.height = height;
+                this.r = new Uint8Array(width * height).fill(0);
+                this.g = new Uint8Array(width * height).fill(0);
+                this.b = new Uint8Array(width * height).fill(0);
+                this.a = new Uint8Array(width * height).fill(0);
+            }
+
+            hexToRGBA(hex) {
+                const r = parseInt(hex.substring(0, 2), 16);
+                const g = parseInt(hex.substring(2, 4), 16);
+                const b = parseInt(hex.substring(4, 6), 16);
+                return { r, g, b, a: 255 };
+            }
+
+            drawRectangle(r) {
+                const col = this.hexToRGBA(r.color);
+                for (let y = r.y; y < r.y + r.h; y++) {
+                    for (let x = r.x; x < r.x + r.w; x++) {
+                        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                            const i = y * this.width + x;
+                            this.r[i] = col.r;
+                            this.g[i] = col.g;
+                            this.b[i] = col.b;
+                            this.a[i] = col.a;
+                        }
+                    }
+                }
+            }
+
+            drawLine(l) {
+                const col = this.hexToRGBA(l.color);
+                const half = Math.floor(l.thickness / 2);
+
+                if (l.x1 === l.x2) { // Vertical
+                    const y1 = Math.min(l.y1, l.y2);
+                    const y2 = Math.max(l.y1, l.y2);
+                    for (let y = y1; y < y2; y++) {
+                        for (let x = l.x1 - half; x < l.x1 + half; x++) {
+                            if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                                const i = y * this.width + x;
+                                this.r[i] = col.r;
+                                this.g[i] = col.g;
+                                this.b[i] = col.b;
+                                this.a[i] = col.a;
+                            }
+                        }
+                    }
+                } else if (l.y1 === l.y2) { // Horizontal
+                    const x1 = Math.min(l.x1, l.x2);
+                    const x2 = Math.max(l.x1, l.x2);
+                    for (let y = l.y1 - half; y < l.y1 + half; y++) {
+                        for (let x = x1; x < x2; x++) {
+                            if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+                                const i = y * this.width + x;
+                                this.r[i] = col.r;
+                                this.g[i] = col.g;
+                                this.b[i] = col.b;
+                                this.a[i] = col.a;
+                            }
+                        }
+                    }
+                }
+            }
+
+            drawShapes(taskString) {
+                const shapes = taskString.split(';');
+                shapes.forEach(shapeStr => {
+                    if (!shapeStr) return;
+                    const parts = shapeStr.split(':');
+                    const type = parts[0];
+                    const color = parts[1];
+                    switch (type) {
+                        case 'R':
+                            this.drawRectangle({ color, w: parseInt(parts[2]), h: parseInt(parts[3]), x: parseInt(parts[4]), y: parseInt(parts[5]) });
+                            break;
+                        case 'L':
+                            this.drawLine({ color, x1: parseInt(parts[2]), y1: parseInt(parts[3]), x2: parseInt(parts[4]), y2: parseInt(parts[5]), thickness: parseInt(parts[6]) });
+                            break;
+                    }
+                });
+            }
+
+            async calculateHashes() {
+                const [rHash, gHash, bHash, aHash] = await Promise.all([
+                    sha256(this.r),
+                    sha256(this.g),
+                    sha256(this.b),
+                    sha256(this.a)
+                ]);
+                return { r: rHash, g: gHash, b: bHash, a: aHash };
+            }
+
+            async calculateCombinedHash() {
+                const hashes = await this.calculateHashes();
+                const combined = hashes.r + hashes.g + hashes.b + hashes.a;
+                const combinedHash = await sha256(new TextEncoder().encode(combined));
+                return { combinedHash, hashes, channels: { r: this.r, g: this.g, b: this.b, a: this.a } };
+            }
+        }
+
+        async function calculateNoiseFingerprint(expected, client) {
+            const diffR = new Uint8Array(expected.r.length);
+            const diffG = new Uint8Array(expected.g.length);
+            const diffB = new Uint8Array(expected.b.length);
+            const diffA = new Uint8Array(expected.a.length);
+
+            for (let i = 0; i < expected.r.length; i++) {
+                diffR[i] = Math.abs(expected.r[i] - client.r[i]);
+                diffG[i] = Math.abs(expected.g[i] - client.g[i]);
+                diffB[i] = Math.abs(expected.b[i] - client.b[i]);
+                diffA[i] = Math.abs(expected.a[i] - client.a[i]);
+            }
+
+            const combinedDiff = new Uint8Array(diffR.length + diffG.length + diffB.length + diffA.length);
+            combinedDiff.set(diffR, 0);
+            combinedDiff.set(diffG, diffR.length);
+            combinedDiff.set(diffB, diffR.length + diffG.length);
+            combinedDiff.set(diffA, diffR.length + diffG.length + diffB.length);
+
+            return await sha256(combinedDiff);
+        }
+
         function drawRectangle(ctx, color, w, h, x, y) {
             ctx.fillStyle = '#' + color;
             ctx.fillRect(x, y, w, h);
@@ -111,7 +236,7 @@
             });
         }
 
-        async function calculateCombinedHash(canvas, mode = "combined") {
+        async function getCombinedHash(canvas) {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
@@ -132,6 +257,13 @@
                 }
             }
 
+            const channels = {
+                r: rChannel,
+                g: gChannel,
+                b: bChannel,
+                a: aChannel,
+            };
+
             const [rHash, gHash, bHash, aHash] = await Promise.all([
                 sha256(rChannel),
                 sha256(gChannel),
@@ -139,57 +271,14 @@
                 sha256(aChannel)
             ]);
 
-            if (mode === "separate") {
-                return {
-                    r: rHash,
-                    g: gHash,
-                    b: bHash,
-                    a: aHash,
-                    a_pixels: aChannel
-                };
-            }
+            const hashes = {
+                r: rHash,
+                g: gHash,
+                b: bHash,
+                a: aHash,
+            };
 
-            const combinedHash = await sha256(
-                new TextEncoder().encode(rHash + gHash + bHash + aHash)
-            );
-            return combinedHash;
-        }
-
-        function findContourValuesWithPositions(arr, coreValue = 255) {
-            const n = Math.sqrt(arr.length);
-            if (!Number.isInteger(n)) throw new Error("Длина массива должна быть квадратом");
-
-            const matrix = [];
-            for (let i = 0; i < n; i++) matrix.push(arr.slice(i * n, (i + 1) * n));
-
-            const offsets = [
-                [-1, -1], [-1, 0], [-1, 1],
-                [0, -1], [0, 1],
-                [1, -1], [1, 0], [1, 1]
-            ];
-
-            const contourValues = [];
-
-            for (let y = 0; y < n; y++) {
-                for (let x = 0; x < n; x++) {
-                    if (matrix[y][x] === coreValue) {
-                        for (const [dy, dx] of offsets) {
-                            const ny = y + dy;
-                            const nx = x + dx;
-                            if (ny >= 0 && ny < n && nx >= 0 && nx < n) {
-                                const v = matrix[ny][nx];
-                                if (v > 0 && v < coreValue) {
-                                    contourValues.push({value: v, dy, dx, y: ny, x: nx});
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            console.log(contourValues);
-
-            return contourValues;
+            return { hashes, channels };
         }
 
         async function fetchAndDrawChallenge() {
@@ -210,27 +299,36 @@
                 drawTask(ctx1, data.first_task);
                 drawTask(ctx2, data.second_task);
 
-                console.log(data.second_task);
-                const totalHash1 = await calculateCombinedHash(canvas1);
-                document.getElementById('first_hash').textContent = totalHash1;
+                const serverCanvas1 = new CanvasPredictor(canvas1.width, canvas1.height);
+                serverCanvas1.drawShapes(data.first_task);
+                const { combinedHash: expectedHash1,  channels: expectedChannels1 } = await serverCanvas1.calculateCombinedHash();
 
-                const hashes = await calculateCombinedHash(canvas2, "separate");
-                document.getElementById('second_hash').textContent = hashes['a'];
+                const { hashes: hashesCanvas1, channels: channelsCanvas1 } = await getCombinedHash(canvas1);
+                document.getElementById('first_hash').textContent = hashesCanvas1.a;
 
-                const a_pixel =  hashes['a_pixels']
+                const { hashes: hashesCanvas2, channels: channelsCanvas2 } = await getCombinedHash(canvas2);
+                document.getElementById('second_hash').textContent = hashesCanvas2.a;
 
-                findContourValuesWithPositions(a_pixel);
+                const totalHash1 = await sha256(
+                    new TextEncoder().encode(hashesCanvas1["r"] + hashesCanvas1["g"] + hashesCanvas1["b"] + hashesCanvas1["a"])
+                );
+
+                const result = {
+                    id: data.id,
+                    totalHash1: totalHash1,
+                    totalHash2: hashesCanvas2['a'],
+                }
+
+                if (hashesCanvas1 !== expectedHash1) {
+                    result.diffHash = await calculateNoiseFingerprint(expectedChannels1, channelsCanvas1);
+                }
 
                 const answer_response = await fetch('/challenge', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        id: data.id,
-                        totalHash1: totalHash1,
-                        totalHash2: hashes['a'],
-                    }),
+                    body: JSON.stringify(result),
                 });
 
                 const answer_data = await answer_response.json();

@@ -169,7 +169,6 @@ func main() {
 		}
 
 		noiseDetect := challenge.ExpectedHash != answer.FirstTaskHash
-		fingerprintOk := challenge.Fingerprint == answer.SecondTaskHash
 
 		challenge.NoiseDetected = noiseDetect
 
@@ -180,6 +179,10 @@ func main() {
 			"Fingerprint":   answer.SecondTaskHash,
 		}
 
+		if answer.DiffTaskHash != nil {
+			updateData["NoiseHash"] = *answer.DiffTaskHash
+		}
+
 		if err := db.DB.Model(&challenge).Updates(updateData).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update challenge in cache"})
 			return
@@ -188,7 +191,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{
 			"status":         "ok",
 			"noise_detected": noiseDetect,
-			"fingerprint_ok": fingerprintOk,
 		})
 	})
 
