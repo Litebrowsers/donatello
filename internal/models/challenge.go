@@ -17,4 +17,5 @@ type Challenge struct {
 	Fingerprint    string
 	NoiseHash      *string
 	ProcessingTime int64
+	JavaScript     *bool `gorm:"default:null"`
 }

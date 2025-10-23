@@ -16,6 +16,46 @@ server.
 
 ## Server-Side Logic
 
+### Challenge Flow and Client Verification
+
+The server now manages a more robust challenge flow to verify client capabilities, particularly JavaScript execution.
+
+1.  **Challenge Initiation (`GET /`)**:
+    *   When a client accesses the root URL (`/`), the server generates a unique `challenge ID`.
+    *   A new challenge record is created in the database with this ID and an `ExpiresAt` timestamp.
+    *   The `index.html` file is dynamically served with the generated `challenge ID` embedded directly into its 
+JavaScript context. This avoids an extra client-side API call.
+    *   The challenge expiration time can be configured via the `CHALLENGE_EXPIRATION` environment variable 
+(e.g., `1m`, `30s`). Default is `1 minute`.
+
+2.  **Task Retrieval (`GET /challenge?id=<id>`)**:
+    *   The client uses the embedded `challenge ID` to request the actual challenge tasks.
+    *   The server retrieves the challenge record, generates two canvas tasks (a stable baseline and a subpixel analysis
+task), and updates the challenge record with these tasks and their expected hashes.
+    *   The tasks are then sent to the client for rendering and hash calculation.
+
+3.  **Result Submission (`POST /challenge`)**:
+    *   The client submits its calculated hashes and the `challenge ID` to this endpoint.
+    *   The server retrieves the challenge record and calculates the `ProcessingTime` (the duration between the initial
+`GET /` request and this `POST /challenge` submission).
+    *   The challenge record is updated with the client's results, noise detection status, and the calculated
+`ProcessingTime`.
+    *   Crucially, if this endpoint is successfully reached, the client's `JavaScript` capability is confirmed, and the 
+challenge record's `JavaScript` field is set to `true`.
+
+### JavaScript Verification and Cleanup
+
+To identify clients that might not have JavaScript enabled or fail to complete the challenge:
+
+*   **Background Cleanup Worker**: A background goroutine runs periodically to check for expired challenges.
+*   **Timeout Logic**: If a challenge's `ExpiresAt` time has passed and the `POST /challenge` endpoint was never 
+successfully hit (meaning the `JavaScript` field is still `NULL`), the worker explicitly marks that challenge's
+`JavaScript` field as `false`. This indicates that the client either lacked JavaScript or failed to complete the 
+challenge within the allotted time.
+*   **Configuration**: The frequency of this cleanup worker can be controlled by the `CLEANUP_INTERVAL` environment 
+variable (e.g., `500ms`, `1m`). Default is `500 milliseconds`.
+
+
 ## Canvas Task Encoding Format
 
 This format is used to describe shapes that should be rendered on a canvas.  

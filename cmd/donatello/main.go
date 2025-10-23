@@ -16,8 +16,11 @@ package main
 import (
 	"fmt"
 	"github.com/Litebrowsers/donatello/internal/canvas_tasks"
+	"github.com/Litebrowsers/donatello/internal/db"
 	"github.com/Litebrowsers/donatello/internal/models"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/time/rate"
 	"log"
 	"math/rand"
 	"net/http"
@@ -26,11 +29,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Litebrowsers/donatello/internal/db"
-	"github.com/gin-gonic/gin"
-	"golang.org/x/time/rate"
 )
+
+var challengeExpiration time.Duration
 
 // RateLimitMiddleware returns a gin.HandlerFunc that limits requests.
 func RateLimitMiddleware(limit rate.Limit, burst int) gin.HandlerFunc {
@@ -44,6 +45,29 @@ func RateLimitMiddleware(limit rate.Limit, burst int) gin.HandlerFunc {
 	}
 }
 
+func cleanupExpiredChallenges() {
+	interval := challengeExpiration * 2
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		log.Println("Cleaning up expired challenges...")
+		// Update expired challenges that are still pending (JavaScript is NULL)
+		result := db.DB.Model(&models.Challenge{}).
+			Where("expires_at < ? AND java_script IS NULL", time.Now()).
+			Update("java_script", false)
+
+		if result.Error != nil {
+			log.Printf("Error cleaning up expired challenges: %v", result.Error)
+			continue
+		}
+
+		if result.RowsAffected > 0 {
+			log.Printf("Marked %d challenges as no-js.", result.RowsAffected)
+		}
+	}
+}
+
 func main() {
 	err := db.InitDB()
 	if err != nil {
@@ -53,6 +77,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
+
+	// Get challenge expiration from environment variable or use default
+	expirationStr := os.Getenv("CHALLENGE_EXPIRATION")
+	challengeExpiration = 500 * time.Millisecond // Default expiration
+
+	if expirationStr != "" {
+		parsedExpiration, err := time.ParseDuration(expirationStr)
+		if err == nil {
+			challengeExpiration = parsedExpiration
+		} else {
+			log.Printf("Invalid CHALLENGE_EXPIRATION format: %s. Using default 1m.", expirationStr)
+		}
+	}
+
+	go cleanupExpiredChallenges()
 
 	router := gin.Default()
 
@@ -187,6 +226,7 @@ func main() {
 			"ActualHash":     answer.FirstTaskHash,
 			"Fingerprint":    answer.SecondTaskHash,
 			"ProcessingTime": processingTime.Milliseconds(),
+			"JavaScript":     true,
 		}
 
 		if answer.DiffTaskHash != nil {
@@ -205,10 +245,11 @@ func main() {
 	})
 
 	router.GET("/", func(c *gin.Context) {
+		// Generate new challenge ID
 		id := uuid.New()
 		challenge := models.Challenge{
 			ID:        id.String(),
-			ExpiresAt: time.Now().Add(1 * time.Minute),
+			ExpiresAt: time.Now().Add(challengeExpiration),
 		}
 		result := db.DB.Create(&challenge)
 		if result.Error != nil {
@@ -216,6 +257,7 @@ func main() {
 			return
 		}
 
+		// Read index.html
 		root, err := os.Getwd()
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to get working directory")
@@ -228,8 +270,10 @@ func main() {
 			return
 		}
 
+		// Replace placeholder with the real ID
 		newHTML := strings.Replace(string(htmlContent), "__CHALLENGE_ID__", id.String(), 1)
 
+		// Serve the modified HTML
 		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(newHTML))
 	})
 
