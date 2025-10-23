@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Litebrowsers/donatello/internal/db"
@@ -71,6 +72,19 @@ func main() {
 	router.Use(RateLimitMiddleware(rate.Every(time.Second/5), 10))
 
 	router.GET("/challenge", func(c *gin.Context) {
+		id := c.Query("id")
+		if id == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "id query parameter is required"})
+			return
+		}
+
+		var challenge models.Challenge
+		result := db.DB.First(&challenge, "id = ?", id)
+		if result.Error != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Challenge not found"})
+			return
+		}
+
 		numShapesFirstTask := rand.Intn(6) + 1
 		randomShapesFirstTask := canvas_tasks.GenerateRandomEvenSizedPrimitives(canvasSize, numShapesFirstTask)
 		firstTaskGenerator := canvas_tasks.NewTaskGenerator(randomShapesFirstTask...)
@@ -91,12 +105,11 @@ func main() {
 		}
 
 		fmt.Println(combinedHash)
-		id := uuid.New()
 
 		firstTask := firstTaskGenerator.GenerateTask()
 
 		var secondTask models.Task
-		result := db.DB.Where("name = ?", "secondTask").First(&secondTask)
+		result = db.DB.Where("name = ?", "secondTask").First(&secondTask)
 		if result.Error != nil {
 			numShapesSecondTask := rand.Intn(6) + 1
 			randomShapesSecondTask := canvas_tasks.GenerateRandomShapes(canvasSize, numShapesSecondTask)
@@ -126,23 +139,18 @@ func main() {
 			return
 		}
 
-		challenge := models.Challenge{
-			ID:            id.String(),
-			Task:          firstTask,
-			ExpectedHash:  combinedHash,
-			ExpiresAt:     time.Now().Add(1 * time.Minute),
-			NoiseDetected: false,
-			Fingerprint:   secondTaskCombinedHash,
-		}
+		challenge.Task = firstTask
+		challenge.ExpectedHash = combinedHash
+		challenge.Fingerprint = secondTaskCombinedHash
 
-		result = db.DB.Create(&challenge)
+		result = db.DB.Save(&challenge)
 		if result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save task to cache"})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"id":          id.String(),
+			"id":          id,
 			"first_task":  firstTask,
 			"second_task": secondTask.Value,
 		})
@@ -168,15 +176,17 @@ func main() {
 			return
 		}
 
+		processingTime := time.Since(challenge.CreatedAt)
 		noiseDetect := challenge.ExpectedHash != answer.FirstTaskHash
 
 		challenge.NoiseDetected = noiseDetect
 
 		// Create a map for selective update
 		updateData := map[string]interface{}{
-			"NoiseDetected": noiseDetect,
-			"ActualHash":    answer.FirstTaskHash,
-			"Fingerprint":   answer.SecondTaskHash,
+			"NoiseDetected":  noiseDetect,
+			"ActualHash":     answer.FirstTaskHash,
+			"Fingerprint":    answer.SecondTaskHash,
+			"ProcessingTime": processingTime.Milliseconds(),
 		}
 
 		if answer.DiffTaskHash != nil {
@@ -195,15 +205,32 @@ func main() {
 	})
 
 	router.GET("/", func(c *gin.Context) {
+		id := uuid.New()
+		challenge := models.Challenge{
+			ID:        id.String(),
+			ExpiresAt: time.Now().Add(1 * time.Minute),
+		}
+		result := db.DB.Create(&challenge)
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create challenge"})
+			return
+		}
+
 		root, err := os.Getwd()
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to get working directory")
 			return
 		}
-
 		filePath := filepath.Join(root, "resources", "index.html")
+		htmlContent, err := os.ReadFile(filePath)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to read index.html")
+			return
+		}
 
-		c.File(filePath)
+		newHTML := strings.Replace(string(htmlContent), "__CHALLENGE_ID__", id.String(), 1)
+
+		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(newHTML))
 	})
 
 	router.GET("/predictor.worker.js", func(c *gin.Context) {

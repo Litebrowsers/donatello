@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Donatello Challenge</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        const challenge_id = "__CHALLENGE_ID__";
+    </script>
 </head>
 <body class="bg-gray-100 text-gray-800 flex flex-col items-center min-h-screen p-4">
 
@@ -192,7 +195,7 @@
             ctx2.clearRect(0, 0, canvas2.width, canvas2.height);
 
             try {
-                const response = await fetch('/challenge');
+                const response = await fetch(`/challenge?id=${challenge_id}`);
                 const data = await response.json();
 
                 drawTask(ctx1, data.first_task);
