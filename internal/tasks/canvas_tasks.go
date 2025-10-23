@@ -11,18 +11,13 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
-package canvas_tasks
+package tasks
 
 import (
 	"fmt"
 	"math/rand"
 	"strings"
-	"time"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 // Shape interface defines the common behavior for all shapes.
 type Shape interface {
@@ -71,6 +66,7 @@ func (t Triangle) Encode() string {
 
 // Line represents a line shape.
 
+// Line represents a line shape.
 type Line struct {
 	Color          string
 	X1, Y1, X2, Y2 int
@@ -84,10 +80,10 @@ func (l Line) Encode() string {
 
 // BoundingBox returns the bounding box of the Line.
 func (l Line) BoundingBox() Rect {
-	minX := min(l.X1, l.X2)
-	maxX := max(l.X1, l.X2)
-	minY := min(l.Y1, l.Y2)
-	maxY := max(l.Y1, l.Y2)
+	minX := minInt(l.X1, l.X2)
+	maxX := maxInt(l.X1, l.X2)
+	minY := minInt(l.Y1, l.Y2)
+	maxY := maxInt(l.Y1, l.Y2)
 	return Rect{minX, minY, maxX + l.Thickness, maxY + l.Thickness} // Approximation for thick lines
 }
 
@@ -109,14 +105,14 @@ type Rect struct {
 }
 
 // Helper functions for min/max
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
@@ -239,7 +235,7 @@ func GenerateRandomShapes(canvasSize int, count int) []Shape {
 	return shapes
 }
 
-// GenerateRandomEvenSizedSquares generates a slice of random square shapes with even side lengths.
+// GenerateRandomEvenSizedPrimitives generates a slice of random square shapes with even side lengths.
 func GenerateRandomEvenSizedPrimitives(canvasSize int, count int) []Shape {
 	if count <= 0 {
 		return nil

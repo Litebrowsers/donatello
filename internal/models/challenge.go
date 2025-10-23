@@ -11,6 +11,7 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
+// Package models contains the data models for the application.
 package models
 
 import (
@@ -19,6 +20,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// Challenge represents a challenge that is sent to the client.
 type Challenge struct {
 	gorm.Model
 	ID             string `gorm:"primaryKey"`

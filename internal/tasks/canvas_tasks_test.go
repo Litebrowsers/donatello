@@ -11,7 +11,7 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
-package canvas_tasks
+package tasks
 
 import (
 	"testing"
@@ -125,7 +125,7 @@ func TestGenerateRandomEvenSizedPrimitives(t *testing.T) {
 				t.Errorf("Square at index %d has odd side length: %d", i, v.W)
 			}
 		case Line:
-			if !(v.X1 == v.X2 || v.Y1 == v.Y2) {
+			if v.X1 != v.X2 && v.Y1 != v.Y2 {
 				t.Errorf("Line at index %d is neither vertical nor horizontal: (%d,%d)-(%d,%d)", i, v.X1, v.Y1, v.X2, v.Y2)
 			}
 		default:
@@ -154,7 +154,10 @@ func TestMatrixAndHashGeneration(t *testing.T) {
 		W:     4,
 		H:     6,
 	}
-	canvas.DrawShapes([]Shape{rect})
+	err := canvas.DrawShapes([]Shape{rect})
+	if err != nil {
+		return
+	}
 
 	// 3. Create the expected matrix for the Red channel (value 111)
 	expectedRedPix := make([]uint8, CanvasWidth*CanvasHeight)
@@ -203,7 +206,10 @@ func TestSpecificLineShapeHashes(t *testing.T) {
 	}
 
 	canvas := NewCanvas(CanvasWidth, CanvasHeight)
-	canvas.DrawShapes(shapes)
+	err := canvas.DrawShapes(shapes)
+	if err != nil {
+		return
+	}
 
 	actualHashes, err := canvas.CalculateHashes()
 	if err != nil {

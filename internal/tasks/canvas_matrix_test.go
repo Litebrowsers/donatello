@@ -11,7 +11,7 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
-package canvas_tasks
+package tasks
 
 import (
 	"image/color"
@@ -39,7 +39,10 @@ func TestNewCanvas(t *testing.T) {
 func TestCanvas_DrawShapes_Rectangle(t *testing.T) {
 	canvas := NewCanvas(20, 20)
 	rect := Rectangle{Color: "FF0000", W: 5, H: 3, X: 10, Y: 5}
-	canvas.DrawShapes([]Shape{rect})
+	err := canvas.DrawShapes([]Shape{rect})
+	if err != nil {
+		return
+	}
 
 	// Check a pixel inside the rectangle
 	c := canvas.R.At(12, 6).(color.Gray)
@@ -57,7 +60,10 @@ func TestCanvas_DrawShapes_Rectangle(t *testing.T) {
 func TestCanvas_DrawShapes_Line(t *testing.T) {
 	canvas := NewCanvas(20, 20)
 	line := Line{Color: "00FF00", X1: 5, Y1: 5, X2: 15, Y2: 5, Thickness: 2}
-	canvas.DrawShapes([]Shape{line})
+	err := canvas.DrawShapes([]Shape{line})
+	if err != nil {
+		return
+	}
 
 	// Check a pixel on the line
 	c := canvas.G.At(10, 5).(color.Gray)
@@ -73,17 +79,17 @@ func TestCanvas_DrawShapes_Line(t *testing.T) {
 }
 
 func Test_hexToRGBA(t *testing.T) {
-	rgba := hexToRGBA("FF0000")
+	rgba, _ := hexToRGBA("FF0000")
 	if rgba.R != 255 || rgba.G != 0 || rgba.B != 0 || rgba.A != 255 {
 		t.Errorf("hexToRGBA('FF0000') failed. Expected (255, 0, 0, 255), got (%d, %d, %d, %d)", rgba.R, rgba.G, rgba.B, rgba.A)
 	}
 
-	rgba = hexToRGBA("00FF00")
+	rgba, _ = hexToRGBA("00FF00")
 	if rgba.R != 0 || rgba.G != 255 || rgba.B != 0 || rgba.A != 255 {
 		t.Errorf("hexToRGBA('00FF00') failed. Expected (0, 255, 0, 255), got (%d, %d, %d, %d)", rgba.R, rgba.G, rgba.B, rgba.A)
 	}
 
-	rgba = hexToRGBA("0000FF")
+	rgba, _ = hexToRGBA("0000FF")
 	if rgba.R != 0 || rgba.G != 0 || rgba.B != 255 || rgba.A != 255 {
 		t.Errorf("hexToRGBA('0000FF') failed. Expected (0, 0, 255, 255), got (%d, %d, %d, %d)", rgba.R, rgba.G, rgba.B, rgba.A)
 	}

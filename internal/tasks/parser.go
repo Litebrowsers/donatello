@@ -11,7 +11,7 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
-package canvas_tasks
+package tasks
 
 import (
 	"fmt"

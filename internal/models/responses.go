@@ -13,6 +13,7 @@ thor betson at gmail dot com
 
 package models
 
+// ChallengeAnswer represents the answer to a challenge that is sent from the client.
 type ChallengeAnswer struct {
 	ID             string  `json:"id" binding:"required"`
 	FirstTaskHash  string  `json:"totalHash1" binding:"required"`

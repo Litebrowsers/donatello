@@ -11,16 +11,11 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
+// Package main is the entry point of the Donatello application.
 package main
 
 import (
 	"fmt"
-	"github.com/Litebrowsers/donatello/internal/canvas_tasks"
-	"github.com/Litebrowsers/donatello/internal/db"
-	"github.com/Litebrowsers/donatello/internal/models"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"golang.org/x/time/rate"
 	"log"
 	"math/rand"
 	"net/http"
@@ -29,6 +24,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Litebrowsers/donatello/internal/db"
+	"github.com/Litebrowsers/donatello/internal/models"
+	"github.com/Litebrowsers/donatello/internal/tasks"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"golang.org/x/time/rate"
 )
 
 var challengeExpiration time.Duration
@@ -125,12 +127,15 @@ func main() {
 		}
 
 		numShapesFirstTask := rand.Intn(6) + 1
-		randomShapesFirstTask := canvas_tasks.GenerateRandomEvenSizedPrimitives(canvasSize, numShapesFirstTask)
-		firstTaskGenerator := canvas_tasks.NewTaskGenerator(randomShapesFirstTask...)
+		randomShapesFirstTask := tasks.GenerateRandomEvenSizedPrimitives(canvasSize, numShapesFirstTask)
+		firstTaskGenerator := tasks.NewTaskGenerator(randomShapesFirstTask...)
 
 		// Server-side drawing
-		canvas := canvas_tasks.NewCanvas(canvasSize, canvasSize)
-		canvas.DrawShapes(randomShapesFirstTask)
+		canvas := tasks.NewCanvas(canvasSize, canvasSize)
+		err = canvas.DrawShapes(randomShapesFirstTask)
+		if err != nil {
+			return
+		}
 		hashes, err := canvas.CalculateHashes()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate hashes"})
@@ -151,21 +156,25 @@ func main() {
 		result = db.DB.Where("name = ?", "secondTask").First(&secondTask)
 		if result.Error != nil {
 			numShapesSecondTask := rand.Intn(6) + 1
-			randomShapesSecondTask := canvas_tasks.GenerateRandomShapes(canvasSize, numShapesSecondTask)
-			secondTaskGenerator := canvas_tasks.NewTaskGenerator(randomShapesSecondTask...)
+			randomShapesSecondTask := tasks.GenerateRandomShapes(canvasSize, numShapesSecondTask)
+			secondTaskGenerator := tasks.NewTaskGenerator(randomShapesSecondTask...)
 			secondTask.Value = secondTaskGenerator.GenerateTask()
 			secondTask.Name = "secondTask"
 			db.DB.Create(&secondTask)
 		}
 
-		secondTaskShapes, err := canvas_tasks.ParseTask(secondTask.Value)
+		secondTaskShapes, err := tasks.ParseTask(secondTask.Value)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse second task"})
 			return
 		}
 
-		secondTaskCanvas := canvas_tasks.NewCanvas(canvasSize, canvasSize)
-		secondTaskCanvas.DrawShapes(secondTaskShapes)
+		secondTaskCanvas := tasks.NewCanvas(canvasSize, canvasSize)
+		err = secondTaskCanvas.DrawShapes(secondTaskShapes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse second task"})
+			return
+		}
 		secondTaskHashes, err := secondTaskCanvas.CalculateHashes()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate hashes for second task"})

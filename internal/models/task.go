@@ -15,6 +15,7 @@ package models
 
 import "gorm.io/gorm"
 
+// Task represents a task that is sent to the client.
 type Task struct {
 	gorm.Model
 	Value string

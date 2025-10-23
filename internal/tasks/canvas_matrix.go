@@ -11,7 +11,8 @@ vera cohopie at gmail dot com
 thor betson at gmail dot com
 */
 
-package canvas_tasks
+// Package tasks contains the canvas related code.
+package tasks
 
 import (
 	"crypto/sha256"
@@ -38,31 +39,43 @@ func NewCanvas(width, height int) *Canvas {
 }
 
 // DrawShapes draws the given shapes onto the canvas.
-func (c *Canvas) DrawShapes(shapes []Shape) {
+func (c *Canvas) DrawShapes(shapes []Shape) error {
 	for _, s := range shapes {
 		switch shape := s.(type) {
 		case Rectangle:
-			c.drawRectangle(shape)
+			if err := c.drawRectangle(shape); err != nil {
+				return err
+			}
 		case Line:
-			c.drawLine(shape)
+			if err := c.drawLine(shape); err != nil {
+				return err
+			}
 			// Add other shapes here if needed
 		}
 	}
+	return nil
 }
 
 // Draw rectangle on canvas
-func (c *Canvas) drawRectangle(r Rectangle) {
-	col := hexToRGBA(r.Color)
+func (c *Canvas) drawRectangle(r Rectangle) error {
+	col, err := hexToRGBA(r.Color)
+	if err != nil {
+		return err
+	}
 	rect := image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H)
 	draw.Draw(c.R, rect, &image.Uniform{C: color.Gray{Y: col.R}}, image.Point{}, draw.Src)
 	draw.Draw(c.G, rect, &image.Uniform{C: color.Gray{Y: col.G}}, image.Point{}, draw.Src)
 	draw.Draw(c.B, rect, &image.Uniform{C: color.Gray{Y: col.B}}, image.Point{}, draw.Src)
 	draw.Draw(c.A, rect, &image.Uniform{C: color.Gray{Y: col.A}}, image.Point{}, draw.Src)
+	return nil
 }
 
 // Draw line on canvas
-func (c *Canvas) drawLine(l Line) {
-	col := hexToRGBA(l.Color)
+func (c *Canvas) drawLine(l Line) error {
+	col, err := hexToRGBA(l.Color)
+	if err != nil {
+		return err
+	}
 
 	var rect image.Rectangle
 	half := l.Thickness / 2
@@ -94,13 +107,14 @@ func (c *Canvas) drawLine(l Line) {
 		)
 
 	} else {
-		return
+		return nil
 	}
 
 	draw.Draw(c.R, rect, &image.Uniform{C: color.Gray{Y: col.R}}, image.Point{}, draw.Src)
 	draw.Draw(c.G, rect, &image.Uniform{C: color.Gray{Y: col.G}}, image.Point{}, draw.Src)
 	draw.Draw(c.B, rect, &image.Uniform{C: color.Gray{Y: col.B}}, image.Point{}, draw.Src)
 	draw.Draw(c.A, rect, &image.Uniform{C: color.Gray{Y: col.A}}, image.Point{}, draw.Src)
+	return nil
 }
 
 // CalculateHashes calculates the SHA256 hash of each color channel.
@@ -134,6 +148,7 @@ func (c *Canvas) CalculateHashes() (map[string]string, error) {
 	return hashes, nil
 }
 
+// CalculateCombinedHash calculates the combined hash of the canvas.
 func (c *Canvas) CalculateCombinedHash(results map[string]string) (string, error) {
 	order := []string{"red", "green", "blue", "alpha"}
 
@@ -154,10 +169,13 @@ func calculateHash(data []byte) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func hexToRGBA(hexColor string) color.RGBA {
+func hexToRGBA(hexColor string) (color.RGBA, error) {
 	var r, g, b byte
-	fmt.Sscanf(hexColor, "%02x%02x%02x", &r, &g, &b)
-	return color.RGBA{R: r, G: g, B: b, A: 255}
+	_, err := fmt.Sscanf(hexColor, "%02x%02x%02x", &r, &g, &b)
+	if err != nil {
+		return color.RGBA{}, fmt.Errorf("failed to parse hex color: %w", err)
+	}
+	return color.RGBA{R: r, G: g, B: b, A: 255}, nil
 }
 
 // PrintMatrices prints the pixel values of each color channel to the console.
