@@ -38,6 +38,47 @@
 
     <script>
 
+        function extractCompactSingleChannel(channelData, n) {
+            const N = n * n;
+            const C = Float32Array.from(channelData);
+
+            let sum = 0, sumSq = 0, min = 1e9, max = -1e9;
+            for (let i = 0; i < N; i++) {
+                const v = C[i];
+                sum += v;
+                sumSq += v * v;
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            const mean = sum / N;
+            const std = Math.sqrt(Math.max(0, sumSq / N - mean * mean));
+            const tmp = Array.from(C).sort((a, b) => a - b);
+            const median = tmp[Math.floor(N / 2)];
+
+            const bins = new Float32Array(8);
+            for (let i = 0; i < N; i++) bins[Math.min(7, Math.floor(C[i] * 8 / 256))] += 1;
+            for (let i = 0; i < 8; i++) bins[i] /= N;
+
+            let gsum = 0, gmax = 0;
+            for (let y = 0; y < n; y++) {
+                for (let x = 0; x < n; x++) {
+                    const c = C[y * n + x];
+                    const rx = (x + 1 < n) ? C[y * n + x + 1] : c;
+                    const by = (y + 1 < n) ? C[(y + 1) * n + x] : c;
+                    const gm = Math.hypot(rx - c, by - c);
+                    gsum += gm;
+                    if (gm > gmax) gmax = gm;
+                }
+            }
+            const gmean = gsum / N;
+
+            const feat = [mean / 255, std / 255, min / 255, max / 255, median / 255];
+            for (let i = 0; i < bins.length; i++) feat.push(bins[i]);
+            feat.push(gmean / 255, gmax / 255);
+
+            return JSON.stringify(feat);
+        }
+
 
         async function calculateNoiseFingerprint(expected, client) {
             const diffR = new Uint8Array(expected.r.length);
@@ -216,6 +257,7 @@
 
                     const { hashes: hashesCanvas2, channels: channelsCanvas2 } = await getCombinedHash(canvas2);
                     document.getElementById('second_hash').textContent = hashesCanvas2.a;
+                    const canvas2Metrics =  extractCompactSingleChannel(channelsCanvas2['a'], canvas2.width)
 
                     const totalHash1 = await sha256(
                         new TextEncoder().encode(hashesCanvas1["r"] + hashesCanvas1["g"] + hashesCanvas1["b"] + hashesCanvas1["a"])
@@ -225,6 +267,7 @@
                         id: data.id,
                         totalHash1: totalHash1,
                         totalHash2: hashesCanvas2['a'],
+                        metrics2: canvas2Metrics
                     };
 
                     if (totalHash1 !== expectedHash1) {

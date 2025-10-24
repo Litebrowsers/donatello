@@ -234,6 +234,7 @@ func main() {
 			"NoiseDetected":  noiseDetect,
 			"ActualHash":     answer.FirstTaskHash,
 			"Fingerprint":    answer.SecondTaskHash,
+			"Metrics":        answer.SecondTaskMetrics,
 			"ProcessingTime": processingTime.Milliseconds(),
 			"JavaScript":     true,
 		}

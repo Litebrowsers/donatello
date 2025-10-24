@@ -30,6 +30,7 @@ type Challenge struct {
 	ExpiresAt      time.Time
 	NoiseDetected  bool
 	Fingerprint    string
+	Metrics        string
 	NoiseHash      *string
 	ProcessingTime int64
 	JavaScript     *bool `gorm:"default:null"`
