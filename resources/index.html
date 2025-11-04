@@ -145,6 +145,45 @@
             return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
+        function interpolateColor(color1, color2, progress) {
+            const r1 = parseInt(color1.substring(0, 2), 16);
+            const g1 = parseInt(color1.substring(2, 4), 16);
+            const b1 = parseInt(color1.substring(4, 6), 16);
+
+            const r2 = parseInt(color2.substring(0, 2), 16);
+            const g2 = parseInt(color2.substring(2, 4), 16);
+            const b2 = parseInt(color2.substring(4, 6), 16);
+
+            const r_float = r1 + progress * (r2 - r1);
+            const g_float = g1 + progress * (g2 - g1);
+            const b_float = b1 + progress * (b2 - b1);
+
+            const step = 25;
+            let r = Math.round(r_float / step) * step;
+            let g = Math.round(g_float / step) * step;
+            let b = Math.round(b_float / step) * step;
+
+            // Clamp values to 0-255
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+
+            return r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+        }
+
+        function drawBackground(ctx, gridSize, color1, color2) {
+            const canvasSize = ctx.canvas.width;
+            const cellSize = canvasSize / gridSize;
+
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const progress = (i * gridSize + j) / (gridSize * gridSize - 1);
+                    const color = interpolateColor(color1, color2, progress);
+                    drawRectangle(ctx, color, cellSize, cellSize, i * cellSize, j * cellSize);
+                }
+            }
+        }
+
         function drawTask(ctx, taskString) {
             if (!taskString) {
                 console.error('No task string received');
@@ -155,23 +194,25 @@
                 if (!shapeStr) return;
                 const parts = shapeStr.split(':');
                 const type = parts[0];
-                const color = parts[1];
 
                 switch (type) {
                     case 'R':
-                        drawRectangle(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                        drawRectangle(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
                         break;
                     case 'C':
-                        drawCircle(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]));
+                        drawCircle(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]));
                         break;
                     case 'T':
-                        drawTriangle(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]), parseInt(parts[7]));
+                        drawTriangle(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]), parseInt(parts[7]));
                         break;
                     case 'L':
-                        drawLine(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]));
+                        drawLine(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]));
                         break;
                     case 'E':
-                        drawEllipse(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                        drawEllipse(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                        break;
+                    case 'X':
+                        drawBackground(ctx, parseInt(parts[1]), parts[2], parts[3]);
                         break;
                     default:
                         console.warn('Unknown shape type:', type);
@@ -255,25 +296,59 @@
                     const { hashes: hashesCanvas1, channels: channelsCanvas1 } = await getCombinedHash(canvas1);
                     document.getElementById('first_hash').textContent = hashesCanvas1.a;
 
-                    const { hashes: hashesCanvas2, channels: channelsCanvas2 } = await getCombinedHash(canvas2);
-                    document.getElementById('second_hash').textContent = hashesCanvas2.a;
-                    const canvas2Metrics =  extractCompactSingleChannel(channelsCanvas2['a'], canvas2.width)
-
                     const totalHash1 = await sha256(
                         new TextEncoder().encode(hashesCanvas1["r"] + hashesCanvas1["g"] + hashesCanvas1["b"] + hashesCanvas1["a"])
                     );
+
+                    let copyMismatch = false;
+                    try {
+                        const dataURL = canvas1.toDataURL();
+                        const img = new Image();
+                        
+                        const copyTestPromise = new Promise((resolve, reject) => {
+                            const timeout = setTimeout(() => {
+                                reject(new Error('Canvas copy test timed out.'));
+                            }, 5000); // 5 seconds timeout
+
+                            img.onload = async () => {
+                                clearTimeout(timeout);
+                                const copyCanvas = document.createElement('canvas');
+                                copyCanvas.width = canvas1.width;
+                                copyCanvas.height = canvas1.height;
+                                const copyCtx = copyCanvas.getContext('2d', { willReadFrequently: true });
+                                copyCtx.drawImage(img, 0, 0);
+
+                                const { hashes: hashesCopyCanvas } = await getCombinedHash(copyCanvas);
+                                const copyTotalHash = await sha256(new TextEncoder().encode(hashesCopyCanvas["r"] + hashesCopyCanvas["g"] + hashesCopyCanvas["b"] + hashesCopyCanvas["a"]));
+                                
+                                resolve(totalHash1 !== copyTotalHash);
+                            };
+                            img.onerror = () => {
+                                clearTimeout(timeout);
+                                console.error('Error loading image from dataURL for copy test.');
+                                reject(new Error('Image loading failed for copy test.'));
+                            };
+                            img.src = dataURL;
+                        });
+                        copyMismatch = await copyTestPromise;
+
+                    } catch (error) {
+                        console.error('Error during canvas copy test:', error);
+                        copyMismatch = true; // Assume mismatch on error
+                    }
+
+                    const { hashes: hashesCanvas2, channels: channelsCanvas2 } = await getCombinedHash(canvas2);
+                    document.getElementById('second_hash').textContent = hashesCanvas2.a;
+                    const canvas2Metrics =  extractCompactSingleChannel(channelsCanvas2['a'], canvas2.width)
 
                     const result = {
                         id: data.id,
                         totalHash1: totalHash1,
                         totalHash2: hashesCanvas2['a'],
-                        metrics2: canvas2Metrics
+                        metrics2: canvas2Metrics,
+                        copyMismatch: copyMismatch
                     };
-
-                    if (totalHash1 !== expectedHash1) {
-                        result.diffHash = await calculateNoiseFingerprint(expectedChannels1, channelsCanvas1);
-                    }
-
+                    
                     const answer_response = await fetch('/challenge', {
                         method: 'POST',
                         headers: {

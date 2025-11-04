@@ -20,4 +20,5 @@ type ChallengeAnswer struct {
 	DiffTaskHash      *string `json:"diffHash"`
 	SecondTaskHash    string  `json:"totalHash2" binding:"required"`
 	SecondTaskMetrics string  `json:"metrics2" binding:"required"`
+	CopyMismatch      *bool   `json:"copyMismatch"`
 }

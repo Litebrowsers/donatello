@@ -33,5 +33,6 @@ type Challenge struct {
 	Metrics        string
 	NoiseHash      *string
 	ProcessingTime int64
+	CopyMismatch   *bool
 	JavaScript     *bool `gorm:"default:null"`
 }

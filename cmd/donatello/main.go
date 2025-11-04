@@ -126,13 +126,26 @@ func main() {
 			return
 		}
 
+		gridOptions := []int{2, 4, 10}
+		gridSize := gridOptions[rand.Intn(len(gridOptions))]
+		color1 := tasks.GenerateRandomColor()
+		color2 := tasks.GenerateRandomColor()
+		chessboardTask := tasks.Chessboard{
+			GridSize: gridSize,
+			Color1:   color1,
+			Color2:   color2,
+		}
+
 		numShapesFirstTask := rand.Intn(6) + 1
 		randomShapesFirstTask := tasks.GenerateRandomEvenSizedPrimitives(canvasSize, numShapesFirstTask)
-		firstTaskGenerator := tasks.NewTaskGenerator(randomShapesFirstTask...)
+
+		allShapes := append([]tasks.Shape{chessboardTask}, randomShapesFirstTask...)
+
+		firstTaskGenerator := tasks.NewTaskGenerator(allShapes...)
 
 		// Server-side drawing
 		canvas := tasks.NewCanvas(canvasSize, canvasSize)
-		err = canvas.DrawShapes(randomShapesFirstTask)
+		err = canvas.DrawShapes(allShapes)
 		if err != nil {
 			return
 		}
@@ -147,8 +160,6 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate hashes"})
 			return
 		}
-
-		fmt.Println(combinedHash)
 
 		firstTask := firstTaskGenerator.GenerateTask()
 
@@ -225,7 +236,7 @@ func main() {
 		}
 
 		processingTime := time.Since(challenge.CreatedAt)
-		noiseDetect := challenge.ExpectedHash != answer.FirstTaskHash
+		noiseDetect := challenge.ExpectedHash != answer.FirstTaskHash && answer.CopyMismatch != nil && *answer.CopyMismatch
 
 		challenge.NoiseDetected = noiseDetect
 
@@ -236,6 +247,7 @@ func main() {
 			"Fingerprint":    answer.SecondTaskHash,
 			"Metrics":        answer.SecondTaskMetrics,
 			"ProcessingTime": processingTime.Milliseconds(),
+			"CopyMismatch":   answer.CopyMismatch,
 			"JavaScript":     true,
 		}
 

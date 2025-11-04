@@ -15,6 +15,7 @@ package tasks
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 )
@@ -99,6 +100,18 @@ func (e Ellipse) Encode() string {
 	return fmt.Sprintf("E:%s:%d:%d:%d:%d", e.Color, e.RX, e.RY, e.X, e.Y)
 }
 
+// Chessboard represents a chessboard pattern.
+type Chessboard struct {
+	GridSize int
+	Color1   string
+	Color2   string
+}
+
+// Encode returns the encoded string for a Chessboard.
+func (c Chessboard) Encode() string {
+	return fmt.Sprintf("X:%d:%s:%s", c.GridSize, c.Color1, c.Color2)
+}
+
 // Rect represents an axis-aligned bounding box.
 type Rect struct {
 	MinX, MinY, MaxX, MaxY int
@@ -145,8 +158,8 @@ func (tg *TaskGenerator) GenerateTask() string {
 	return strings.Join(encodedShapes, ";")
 }
 
-// generateRandomColor generates a random 6-digit hexadecimal color string.
-func generateRandomColor() string {
+// GenerateRandomColor generates a random 6-digit hexadecimal color string.
+func GenerateRandomColor() string {
 	return fmt.Sprintf("%06X", rand.Intn(0xFFFFFF+1))
 }
 
@@ -180,6 +193,73 @@ func getBoundingBox(s Shape) Rect {
 	}
 }
 
+// GenerateChessboard generates a chessboard pattern with a gradient.
+func GenerateChessboard(canvasSize, gridSize int, color1, color2 string) []Shape {
+	if gridSize <= 0 {
+		return nil
+	}
+
+	shapes := make([]Shape, 0)
+	cellSize := canvasSize / gridSize
+	if cellSize <= 0 {
+		cellSize = 2
+	}
+
+	for i := 0; i < gridSize; i++ {
+		for j := 0; j < gridSize; j++ {
+			progress := float64(i*gridSize+j) / float64(gridSize*gridSize-1)
+			color := interpolateColor(color1, color2, progress)
+
+			rect := Rectangle{
+				Color: color,
+				W:     cellSize,
+				H:     cellSize,
+				X:     i * cellSize,
+				Y:     j * cellSize,
+			}
+			shapes = append(shapes, rect)
+		}
+	}
+	return shapes
+}
+
+// interpolateColor computes a color in a gradient.
+func interpolateColor(color1, color2 string, progress float64) string {
+	var r1, g1, b1, r2, g2, b2 int
+	_, _ = fmt.Sscanf(color1, "%02X%02X%02X", &r1, &g1, &b1)
+	_, _ = fmt.Sscanf(color2, "%02X%02X%02X", &r2, &g2, &b2)
+
+	rFloat := float64(r1) + progress*(float64(r2-r1))
+	gFloat := float64(g1) + progress*(float64(g2-g1))
+	bFloat := float64(b1) + progress*(float64(b2-b1))
+
+	step := 25.0
+	r := int(math.Round(rFloat/step) * step)
+	g := int(math.Round(gFloat/step) * step)
+	b := int(math.Round(bFloat/step) * step)
+
+	if r < 0 {
+		r = 0
+	}
+	if r > 255 {
+		r = 255
+	}
+	if g < 0 {
+		g = 0
+	}
+	if g > 255 {
+		g = 255
+	}
+	if b < 0 {
+		b = 0
+	}
+	if b > 255 {
+		b = 255
+	}
+
+	return fmt.Sprintf("%02X%02X%02X", r, g, b)
+}
+
 // GenerateRandomShapes generates a slice of random shapes.
 func GenerateRandomShapes(canvasSize int, count int) []Shape {
 	if count <= 0 {
@@ -191,7 +271,7 @@ func GenerateRandomShapes(canvasSize int, count int) []Shape {
 		switch rand.Intn(5) { // 0: Rectangle, 1: Circle, 2: Triangle, 3: Line, 4: Ellipse
 		case 0:
 			shapes[i] = Rectangle{
-				Color: generateRandomColor(),
+				Color: GenerateRandomColor(),
 				W:     rand.Intn(canvasSize/2) + 1,
 				H:     rand.Intn(canvasSize/2) + 1,
 				X:     rand.Intn(canvasSize),
@@ -199,14 +279,14 @@ func GenerateRandomShapes(canvasSize int, count int) []Shape {
 			}
 		case 1:
 			shapes[i] = Circle{
-				Color: generateRandomColor(),
+				Color: GenerateRandomColor(),
 				R:     rand.Intn(canvasSize/4) + 1,
 				X:     rand.Intn(canvasSize),
 				Y:     rand.Intn(canvasSize),
 			}
 		case 2:
 			shapes[i] = Triangle{
-				Color: generateRandomColor(),
+				Color: GenerateRandomColor(),
 				X1:    rand.Intn(canvasSize),
 				Y1:    rand.Intn(canvasSize),
 				X2:    rand.Intn(canvasSize),
@@ -216,7 +296,7 @@ func GenerateRandomShapes(canvasSize int, count int) []Shape {
 			}
 		case 3:
 			shapes[i] = Line{
-				Color: generateRandomColor(),
+				Color: GenerateRandomColor(),
 				X1:    rand.Intn(canvasSize),
 				Y1:    rand.Intn(canvasSize),
 				X2:    rand.Intn(canvasSize),
@@ -224,7 +304,7 @@ func GenerateRandomShapes(canvasSize int, count int) []Shape {
 			}
 		case 4:
 			shapes[i] = Ellipse{
-				Color: generateRandomColor(),
+				Color: GenerateRandomColor(),
 				RX:    rand.Intn(canvasSize/2) + 1,
 				RY:    rand.Intn(canvasSize/2) + 1,
 				X:     rand.Intn(canvasSize),
@@ -252,7 +332,7 @@ func GenerateRandomEvenSizedPrimitives(canvasSize int, count int) []Shape {
 			case 0:
 				side := (rand.Intn(5) + 1) * 2
 				newShape = Rectangle{
-					Color: generateRandomColor(),
+					Color: GenerateRandomColor(),
 					W:     side,
 					H:     side,
 					X:     rand.Intn(canvasSize - side),
@@ -265,9 +345,8 @@ func GenerateRandomEvenSizedPrimitives(canvasSize int, count int) []Shape {
 					y1 := rand.Intn(canvasSize)
 					y2 := rand.Intn(canvasSize)
 					newShape = Line{
-						Color:     generateRandomColor(),
-						X1:        x,
-						Y1:        y1,
+						Color: GenerateRandomColor(),
+						X1:    x, Y1: y1,
 						X2:        x,
 						Y2:        y2,
 						Thickness: thickness,
@@ -277,7 +356,7 @@ func GenerateRandomEvenSizedPrimitives(canvasSize int, count int) []Shape {
 					x1 := rand.Intn(canvasSize)
 					x2 := rand.Intn(canvasSize)
 					newShape = Line{
-						Color:     generateRandomColor(),
+						Color:     GenerateRandomColor(),
 						X1:        x1,
 						Y1:        y,
 						X2:        x2,

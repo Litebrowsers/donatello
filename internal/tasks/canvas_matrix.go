@@ -50,6 +50,16 @@ func (c *Canvas) DrawShapes(shapes []Shape) error {
 			if err := c.drawLine(shape); err != nil {
 				return err
 			}
+		case Chessboard:
+			canvasSize := c.R.Bounds().Dx()
+			chessboardShapes := GenerateChessboard(canvasSize, shape.GridSize, shape.Color1, shape.Color2)
+			for _, s := range chessboardShapes {
+				if rect, ok := s.(Rectangle); ok {
+					if err := c.drawRectangle(rect); err != nil {
+						return err
+					}
+				}
+			}
 			// Add other shapes here if needed
 		}
 	}
