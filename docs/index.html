@@ -38,14 +38,14 @@
     <p class="mt-4 text-sm text-gray-500">Time taken: <span id="time-taken">N/A</span></p>
     <p class="mt-4 text-sm text-gray-500">Noise detected: <span id="noise-detected">N/A</span></p>
     <p class="mt-4 text-sm text-gray-500">Fingerprint: <span id="fingerprint">N/A</span></p>
-    <p class="mt-4 text-sm text-gray-500">Noise Fingerprint: <span id="noise-fingerprint">N/A</span></p>
+            <p class="mt-4 text-sm text-gray-500">Noise Fingerprint: <span id="noise-fingerprint">N/A</span></p>
+        <p class="mt-4 text-sm text-gray-500">Copy Mismatch: <span id="copy-mismatch">N/A</span></p>
 
-    <script>
-        // --- Backend Logic (translated from Go) ---
+        <script>
+            // --- Backend Logic (translated from Go) ---
 
-        const CANVAS_SIZE = 20;
-
-        function generateRandomColor() {
+            const CANVAS_SIZE = 20;
+            function generateRandomColor() {
             return Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0').toUpperCase();
         }
 
@@ -55,24 +55,34 @@
                 let newShape;
                 if (Math.random() < 0.5) { // Even-sided Square
                     const side = (Math.floor(Math.random() * 5) + 1) * 2;
-                    newShape = `R:${generateRandomColor()}:${side}:${side}:${Math.floor(Math.random() * (canvasSize - side))}:${Math.floor(Math.random() * (canvasSize - side))}`;
+                    const x = Math.floor(Math.random() * (canvasSize - side) / 2) * 2;
+                    const y = Math.floor(Math.random() * (canvasSize - side) / 2) * 2;
+                    newShape = `R:${generateRandomColor()}:${side}:${side}:${x}:${y}`;
                 } else { // Line
                     const thickness = (Math.floor(Math.random() * 2) + 1) * 2;
                     if (Math.random() < 0.5) {
-                        const x = Math.floor(Math.random() * (canvasSize - thickness));
-                        const y1 = Math.floor(Math.random() * canvasSize);
-                        const y2 = Math.floor(Math.random() * canvasSize);
+                        const x = Math.floor(Math.random() * (canvasSize - thickness) / 2) * 2;
+                        const y1 = Math.floor(Math.random() * canvasSize / 2) * 2;
+                        const y2 = Math.floor(Math.random() * canvasSize / 2) * 2;
                         newShape = `L:${generateRandomColor()}:${x}:${y1}:${x}:${y2}:${thickness}`;
                     } else {
-                        const y = Math.floor(Math.random() * (canvasSize - thickness));
-                        const x1 = Math.floor(Math.random() * canvasSize);
-                        const x2 = Math.floor(Math.random() * canvasSize);
+                        const y = Math.floor(Math.random() * (canvasSize - thickness) / 2) * 2;
+                        const x1 = Math.floor(Math.random() * canvasSize / 2) * 2;
+                        const x2 = Math.floor(Math.random() * canvasSize / 2) * 2;
                         newShape = `L:${generateRandomColor()}:${x1}:${y}:${x2}:${y}:${thickness}`;
                     }
                 }
                 primitives.push(newShape);
             }
             return primitives.join(';');
+        }
+
+        function generateRandomBackgroundTask(canvasSize) {
+            const possibleGridSizes = [2, 4, 10];
+            const gridSize = possibleGridSizes[Math.floor(Math.random() * possibleGridSizes.length)];
+            const color1 = generateRandomColor();
+            const color2 = generateRandomColor();
+            return `X:${gridSize}:${color1}:${color2}`;
         }
 
         class ServerCanvas {
@@ -106,7 +116,7 @@
                     }
                 }
             }
-            
+
             drawLine(l) {
                 const col = this.hexToRGBA(l.color);
                 const half = Math.floor(l.thickness / 2);
@@ -148,16 +158,54 @@
                     if (!shapeStr) return;
                     const parts = shapeStr.split(':');
                     const type = parts[0];
-                    const color = parts[1];
                     switch (type) {
                         case 'R':
-                            this.drawRectangle({ color, w: parseInt(parts[2]), h: parseInt(parts[3]), x: parseInt(parts[4]), y: parseInt(parts[5]) });
+                            this.drawRectangle({ color: parts[1], w: parseInt(parts[2]), h: parseInt(parts[3]), x: parseInt(parts[4]), y: parseInt(parts[5]) });
                             break;
                         case 'L':
-                             this.drawLine({ color, x1: parseInt(parts[2]), y1: parseInt(parts[3]), x2: parseInt(parts[4]), y2: parseInt(parts[5]), thickness: parseInt(parts[6]) });
+                             this.drawLine({ color: parts[1], x1: parseInt(parts[2]), y1: parseInt(parts[3]), x2: parseInt(parts[4]), y2: parseInt(parts[5]), thickness: parseInt(parts[6]) });
+                            break;
+                        case 'X':
+                            this.drawBackground(parseInt(parts[1]), parts[2], parts[3]);
                             break;
                     }
                 });
+            }
+
+            interpolateColor(color1, color2, progress) {
+                const r1 = parseInt(color1.substring(0, 2), 16);
+                const g1 = parseInt(color1.substring(2, 4), 16);
+                const b1 = parseInt(color1.substring(4, 6), 16);
+
+                const r2 = parseInt(color2.substring(0, 2), 16);
+                const g2 = parseInt(color2.substring(2, 4), 16);
+                const b2 = parseInt(color2.substring(4, 6), 16);
+
+                const r_float = r1 + progress * (r2 - r1);
+                const g_float = g1 + progress * (g2 - g1);
+                const b_float = b1 + progress * (b2 - b1);
+
+                const step = 25;
+                let r = Math.round(r_float / step) * step;
+                let g = Math.round(g_float / step) * step;
+                let b = Math.round(b_float / step) * step;
+
+                r = Math.max(0, Math.min(255, r));
+                g = Math.max(0, Math.min(255, g));
+                b = Math.max(0, Math.min(255, b));
+
+                return r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+            }
+
+            drawBackground(gridSize, color1, color2) {
+                const cellSize = this.width / gridSize;
+                for (let i = 0; i < gridSize; i++) {
+                    for (let j = 0; j < gridSize; j++) {
+                        const progress = (i * gridSize + j) / (gridSize * gridSize - 1);
+                        const color = this.interpolateColor(color1, color2, progress);
+                        this.drawRectangle({ color, w: cellSize, h: cellSize, x: i * cellSize, y: j * cellSize });
+                    }
+                }
             }
 
             async calculateHashes() {
@@ -219,6 +267,45 @@
             ctx.fill();
         }
 
+        function interpolateColor(color1, color2, progress) {
+            const r1 = parseInt(color1.substring(0, 2), 16);
+            const g1 = parseInt(color1.substring(2, 4), 16);
+            const b1 = parseInt(color1.substring(4, 6), 16);
+
+            const r2 = parseInt(color2.substring(0, 2), 16);
+            const g2 = parseInt(color2.substring(2, 4), 16);
+            const b2 = parseInt(color2.substring(4, 6), 16);
+
+            const r_float = r1 + progress * (r2 - r1);
+            const g_float = g1 + progress * (g2 - g1);
+            const b_float = b1 + progress * (b2 - b1);
+
+            const step = 25;
+            let r = Math.round(r_float / step) * step;
+            let g = Math.round(g_float / step) * step;
+            let b = Math.round(b_float / step) * step;
+
+            // Clamp values to 0-255
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+
+            return r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+        }
+
+        function drawBackground(ctx, gridSize, color1, color2) {
+            const canvasSize = ctx.canvas.width;
+            const cellSize = canvasSize / gridSize;
+
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const progress = (i * gridSize + j) / (gridSize * gridSize - 1);
+                    const color = interpolateColor(color1, color2, progress);
+                    drawRectangle(ctx, color, cellSize, cellSize, i * cellSize, j * cellSize);
+                }
+            }
+        }
+
         async function sha256(uint8Array) {
             const buf = await crypto.subtle.digest("SHA-256", uint8Array);
             return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -234,23 +321,25 @@
                 if (!shapeStr) return;
                 const parts = shapeStr.split(':');
                 const type = parts[0];
-                const color = parts[1];
 
                 switch (type) {
                     case 'R':
-                        drawRectangle(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                        drawRectangle(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
                         break;
                     case 'C':
-                        drawCircle(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]));
+                        drawCircle(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]));
                         break;
                     case 'T':
-                        drawTriangle(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]), parseInt(parts[7]));
+                        drawTriangle(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]), parseInt(parts[7]));
                         break;
                     case 'L':
-                        drawLine(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]));
+                        drawLine(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]), parseInt(parts[6]));
                         break;
                     case 'E':
-                        drawEllipse(ctx, color, parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                        drawEllipse(ctx, parts[1], parseInt(parts[2]), parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
+                        break;
+                    case 'X':
+                        drawBackground(ctx, parseInt(parts[1]), parts[2], parts[3]);
                         break;
                     default:
                         console.warn('Unknown shape type:', type);
@@ -338,7 +427,9 @@
             const startTime = performance.now();
 
             // --- Challenge Generation ---
-            const firstTask = generateRandomEvenSizedPrimitives(CANVAS_SIZE, Math.floor(Math.random() * 6) + 1);
+            const backgroundTask = generateRandomBackgroundTask(CANVAS_SIZE);
+            const primitivesTask = generateRandomEvenSizedPrimitives(CANVAS_SIZE, Math.floor(Math.random() * 6) + 1);
+            const firstTask = `${backgroundTask};${primitivesTask}`;
             const secondTask = STATIC_SECOND_TASK;
 
             // --- Server-side Hash Calculation ---
@@ -363,6 +454,43 @@
 
             // --- Client-side Hash Calculation ---
             const { combinedHash: clientHash1, channels: clientChannels1 } = await getClientCombinedHash(canvas1);
+
+            let copyMismatch = false;
+            try {
+                const dataURL = canvas1.toDataURL();
+                const img = new Image();
+
+                const copyTestPromise = new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        reject(new Error('Canvas copy test timed out.'));
+                    }, 5000); // 5 seconds timeout
+
+                    img.onload = async () => {
+                        clearTimeout(timeout);
+                        const copyCanvas = document.createElement('canvas');
+                        copyCanvas.width = canvas1.width;
+                        copyCanvas.height = canvas1.height;
+                        const copyCtx = copyCanvas.getContext('2d', { willReadFrequently: true });
+                        copyCtx.drawImage(img, 0, 0);
+
+                        const { combinedHash: copyTotalHash } = await getClientCombinedHash(copyCanvas);
+
+                        resolve(clientHash1 !== copyTotalHash);
+                    };
+                    img.onerror = () => {
+                        clearTimeout(timeout);
+                        console.error('Error loading image from dataURL for copy test.');
+                        reject(new Error('Image loading failed for copy test.'));
+                    };
+                    img.src = dataURL;
+                });
+                copyMismatch = await copyTestPromise;
+
+            } catch (error) {
+                console.error('Error during canvas copy test:', error);
+                copyMismatch = true; // Assume mismatch on error
+            }
+            document.getElementById('copy-mismatch').textContent = copyMismatch;
 
 
             const { hashes: clientHashes2 } = await getClientCombinedHash(canvas2, "separate");
