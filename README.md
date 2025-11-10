@@ -87,6 +87,7 @@ R:FF0000:5:3:10:5
 
 ---
 
+
 ### 2. Circle
 ```
 
@@ -107,6 +108,7 @@ C:00FF00:4:15:15
 
 ---
 
+
 ### 3. Triangle
 ```
 
@@ -125,6 +127,7 @@ T:0000FF:2:2:6:2:4:6
 → Blue triangle with vertices at (2,2), (6,2), (4,6).
 
 ---
+
 
 ### 4. Line
 ```
@@ -146,6 +149,7 @@ L:FF00FF:5:5:12:8:2
 
 ---
 
+
 ### 5. Ellipse
 ```
 
@@ -166,6 +170,7 @@ E:FFFF00:6:3:20:10
 
 ---
 
+
 ## Combining Shapes
 Multiple shapes can be combined into a single task string, separated by `;`.
 
@@ -185,3 +190,41 @@ In the current approach, a single test is generated and sent to the client as a 
 randomly generated shapes that the client must render. The client then calculates a hash of the rendered output and 
 sends it back to the server for verification. This method allows for a baseline analysis of the client's rendering 
 capabilities.
+
+## Running with Docker
+
+This application is configured to run in a Docker container.
+
+### 1. Build the Docker Image
+
+First, build the image using the provided `Dockerfile`.
+
+```shell
+docker build -t donatello .
+```
+
+### 2. Run the Container
+
+Run the container, exposing the port and mounting a volume to persist the SQLite database.
+
+```shell
+docker run --rm -p 8080:8080 \
+  -e DB_PATH=/data/donatello.db \
+  -v donatello-data:/data \
+  donatello
+```
+
+- The service will be available at `http://localhost:8080`.
+- The database file (`donatello.db`) will be stored in a Docker-managed volume named `donatello-data` to ensure data 
+- persistence across container restarts.
+
+### 3. Verify Database Creation (Optional)
+
+The database file is created on the first request to the server. After accessing `http://localhost:8080`, you can verify 
+that the database file exists within the Docker volume by running:
+
+```shell
+docker run --rm -v donatello-data:/data alpine ls -l /data
+```
+
+You should see `donatello.db` in the output.

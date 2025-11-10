@@ -10,8 +10,6 @@
 .pre-commit-config.yaml
 
 # Local files
-output.png
-test.html
 Dockerfile
 README.md
 LICENSE
